@@ -1,2 +1,2 @@
-# netsentniel
+# NetSentinel
 Uni Project security dashboard
