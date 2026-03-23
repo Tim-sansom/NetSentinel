@@ -1,0 +1,2 @@
+# NetSentinel cron jobs
+* * * * * root echo 'Cron working' >> /var/log/cron/netsentinel.log
