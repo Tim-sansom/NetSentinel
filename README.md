@@ -264,5 +264,5 @@ Distributed under the MIT License. See [`LICENSE`](LICENSE) for details.
 ***
 
 <div align="center">
-  Built as a University Dissertation Project — London, England 🇬🇧
+  Built as a Arden University Dissertation Project — London, England 🇬🇧
 </div>
