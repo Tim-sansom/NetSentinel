@@ -1,6 +1,8 @@
 # NetSentinel
 <div align="center">
 
+<img src="https://user-gen-media-assets.s3.amazonaws.com/gpt4o_images/22fc0602-2220-41f9-ac4e-1736934532a0.png" alt="NetSentinel logo" width="180">
+
 # 🛡️ NetSentinel
 
 ### Lightweight SIEM — Real-Time Network Threat Detection & Dashboard
@@ -264,5 +266,5 @@ Distributed under the MIT License. See [`LICENSE`](LICENSE) for details.
 ***
 
 <div align="center">
-  Built as a Arden University Dissertation Project — London, England 🇬🇧
+  Built as an Arden University  IT Dissertation Project — Manchester, England 🇬🇧
 </div>
