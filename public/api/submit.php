@@ -11,102 +11,165 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-// Include the secure database connection
+// Include the secure database connection and authentication
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/auth.php';
 
-// 1. Get the raw POST data and decode JSON
-$jsonInput = file_get_contents('php://input');
-$data = json_decode($jsonInput, true);
+// 1. AUTHENTICATE: Validate Bearer token (Fulfills SR2)
+$authenticated_device_uuid = authenticate_api_request($pdo);
 
-if (json_last_error() !== JSON_ERROR_NONE || empty($data)) {
-    http_response_code(400);
-    echo json_encode(["status" => "error", "message" => "Invalid JSON payload"]);
+// 2. VALIDATE: Parse and validate JSON payload (Fulfills SR3)
+$payload = validate_json_payload();
+
+// 3. SECURITY CHECK: Ensure token UUID matches payload UUID
+if ($payload['device_uuid'] !== $authenticated_device_uuid) {
+    http_response_code(403);
+    echo json_encode(["status" => "error", "message" => "Token and payload device mismatch"]);
     exit;
 }
-
-// 2. Extract and sanitize data
-$hostname = htmlspecialchars($data['hostname'] ?? 'unknown-host', ENT_QUOTES, 'UTF-8');
-$os_family = htmlspecialchars($data['system_info']['os_family'] ?? 'Unknown', ENT_QUOTES, 'UTF-8');
-$os_version = htmlspecialchars($data['system_info']['os_version'] ?? 'Unknown', ENT_QUOTES, 'UTF-8');
-$latency_ms = filter_var($data['latency_ms'] ?? 0, FILTER_VALIDATE_INT) ?: 0;
-$overall_status = htmlspecialchars($data['overall_status'] ?? 'Unknown', ENT_QUOTES, 'UTF-8');
 
 try {
     // Start a database transaction (all or nothing)
     $pdo->beginTransaction();
 
-    // 3. UPSERT Device: Find existing device or create a new one
-    $stmt = $pdo->prepare("SELECT device_id FROM device WHERE hostname = :hostname");
-    $stmt->execute(['hostname' => $hostname]);
+    // 4. UPSERT Device: Find existing device or create a new one
+    $stmt = $pdo->prepare("SELECT device_id FROM device WHERE device_uuid = :uuid");
+    $stmt->execute(['uuid' => $payload['device_uuid']]);
     $device = $stmt->fetch();
 
     if ($device) {
         $device_id = $device['device_id'];
-        $updateStmt = $pdo->prepare("UPDATE device SET last_seen_at = CURRENT_TIMESTAMP, current_health_status = :status, os_family = :os_family, os_version = :os_version WHERE device_id = :id");
-        $updateStmt->execute([
-            'status' => $overall_status,
-            'os_family' => $os_family,
-            'os_version' => $os_version,
-            'id' => $device_id
-        ]);
+        $updateStmt = $pdo->prepare("UPDATE device SET last_seen_at = CURRENT_TIMESTAMP WHERE device_id = :id");
+        $updateStmt->execute(['id' => $device_id]);
     } else {
-        $insertStmt = $pdo->prepare("INSERT INTO device (hostname, os_family, os_version, current_health_status) VALUES (:hostname, :os_family, :os_version, :status)");
+        // New device - insert with UUID
+        $insertStmt = $pdo->prepare("INSERT INTO device (device_uuid, hostname, os_family, os_version, current_health_status) 
+                                     VALUES (:uuid, :hostname, :os_family, :os_version, 'unknown')");
         $insertStmt->execute([
-            'hostname' => $hostname,
-            'os_family' => $os_family,
-            'os_version' => $os_version,
-            'status' => $overall_status
+            'uuid' => $payload['device_uuid'],
+            'hostname' => 'unknown', // Will be updated from system_info check
+            'os_family' => 'unknown',
+            'os_version' => 'unknown'
         ]);
         $device_id = $pdo->lastInsertId();
     }
 
-    // 4. Insert the Check Run record
-    $runStmt = $pdo->prepare("INSERT INTO check_run (device_id, latency_ms, overall_status) VALUES (:device_id, :latency_ms, :overall_status)");
+    // 5. Insert the Check Run record
+    $runStmt = $pdo->prepare("INSERT INTO check_run (device_id, check_timestamp, overall_status) 
+                              VALUES (:device_id, :timestamp, 'pending')");
     $runStmt->execute([
         'device_id' => $device_id,
-        'latency_ms' => $latency_ms,
-        'overall_status' => $overall_status
+        'timestamp' => $payload['timestamp'] ?? date('Y-m-d H:i:s')
     ]);
     $check_run_id = $pdo->lastInsertId();
 
-    // 5. Insert Port Findings
-    if (!empty($data['findings']['ports']) && is_array($data['findings']['ports'])) {
-        $portSql = "INSERT INTO port_finding (check_run_id, port_number, protocol, process_name, status, is_expected, severity) 
-                    VALUES (:check_run_id, :port_number, :protocol, :process_name, :status, :is_expected, :severity)";
-        $portStmt = $pdo->prepare($portSql);
+    // 6. Process each check result from the agent
+    $overall_health = 'healthy'; // Default to healthy
+    
+    foreach ($payload['checks'] as $check) {
+        $check_name = $check['check_name'] ?? 'unknown';
+        $status = $check['status'] ?? 'unknown';
+        $message = $check['message'] ?? '';
+        $severity = $check['severity'] ?? 'info';
+        $details = $check['details'] ?? [];
         
-        foreach ($data['findings']['ports'] as $port) {
-            $portStmt->execute([
-                'check_run_id' => $check_run_id,
-                'port_number' => (int)($port['port_number'] ?? 0),
-                'protocol' => $port['protocol'] ?? 'TCP',
-                'process_name' => $port['process_name'] ?? null,
-                'status' => $port['status'] ?? 'open',
-                'is_expected' => (int)($port['is_expected'] ?? false),
-                'severity' => $port['severity'] ?? 'Low'
-            ]);
+        // Update overall health if any check fails
+        if ($status === 'fail' || $status === 'error') {
+            $overall_health = 'unhealthy';
+        } elseif ($status === 'warning' && $overall_health !== 'unhealthy') {
+            $overall_health = 'warning';
+        }
+        
+        // Insert into appropriate finding table based on check type
+        switch ($check_name) {
+            case 'system_info':
+                // Update device with system info
+                $hostname = $details['hostname'] ?? 'unknown';
+                $os_name = $details['os_name'] ?? 'unknown';
+                $os_version = $details['os_version'] ?? 'unknown';
+                
+                $sysStmt = $pdo->prepare("UPDATE device SET hostname = :hostname, os_family = :os_family, 
+                                         os_version = :os_version WHERE device_id = :id");
+                $sysStmt->execute([
+                    'hostname' => $hostname,
+                    'os_family' => $os_name,
+                    'os_version' => $os_version,
+                    'id' => $device_id
+                ]);
+                
+                // Insert system finding
+                $sysFindStmt = $pdo->prepare("INSERT INTO system_finding (check_run_id, hostname, os_name, os_version, 
+                                             architecture, uptime_seconds) 
+                                             VALUES (:check_run_id, :hostname, :os_name, :os_version, :arch, :uptime)");
+                $sysFindStmt->execute([
+                    'check_run_id' => $check_run_id,
+                    'hostname' => $hostname,
+                    'os_name' => $os_name,
+                    'os_version' => $os_version,
+                    'arch' => $details['architecture'] ?? 'unknown',
+                    'uptime' => $details['uptime_seconds'] ?? 0
+                ]);
+                break;
+                
+            case 'port_check':
+                // Insert port findings
+                if (!empty($details['open_ports']) && is_array($details['open_ports'])) {
+                    $portStmt = $pdo->prepare("INSERT INTO port_finding (check_run_id, port_number, service_name, status, severity) 
+                                              VALUES (:check_run_id, :port, :service, :status, :severity)");
+                    
+                    foreach ($details['open_ports'] as $port) {
+                        $portStmt->execute([
+                            'check_run_id' => $check_run_id,
+                            'port' => $port['port'] ?? 0,
+                            'service' => $port['service'] ?? 'unknown',
+                            'status' => 'open',
+                            'severity' => $severity
+                        ]);
+                    }
+                }
+                break;
+                
+            case 'firewall_check':
+                // Insert firewall finding
+                $fw_enabled = ($status === 'pass') ? 1 : 0;
+                $fwStmt = $pdo->prepare("INSERT INTO firewall_finding (check_run_id, enabled, status, details) 
+                                        VALUES (:check_run_id, :enabled, :status, :details)");
+                $fwStmt->execute([
+                    'check_run_id' => $check_run_id,
+                    'enabled' => $fw_enabled,
+                    'status' => $status,
+                    'details' => json_encode($details)
+                ]);
+                break;
+                
+            case 'latency_check':
+                // Insert latency finding
+                $latency_ms = $details['latency_ms'] ?? 0;
+                $latStmt = $pdo->prepare("INSERT INTO latency_finding (check_run_id, target, latency_ms, status) 
+                                         VALUES (:check_run_id, :target, :latency, :status)");
+                $latStmt->execute([
+                    'check_run_id' => $check_run_id,
+                    'target' => $details['target'] ?? 'unknown',
+                    'latency' => $latency_ms,
+                    'status' => $status
+                ]);
+                break;
         }
     }
-
-    // 6. Insert Firewall Findings
-    if (!empty($data['findings']['firewall']) && is_array($data['findings']['firewall'])) {
-        $fw = $data['findings']['firewall'];
-        $fwToInsert = isset($fw[0]) ? $fw : [$fw]; 
-        
-        $fwSql = "INSERT INTO firewall_finding (check_run_id, profile, enabled, risky_rule_count, status) 
-                  VALUES (:check_run_id, :profile, :enabled, :risky_rule_count, :status)";
-        $fwStmt = $pdo->prepare($fwSql);
-
-        foreach ($fwToInsert as $fwProfile) {
-            $fwStmt->execute([
-                'check_run_id' => $check_run_id,
-                'profile' => $fwProfile['profile'] ?? 'Default',
-                'enabled' => (int)($fwProfile['enabled'] ?? false),
-                'risky_rule_count' => (int)($fwProfile['risky_rule_count'] ?? 0),
-                'status' => $fwProfile['status'] ?? 'Unknown'
-            ]);
-        }
-    }
+    
+    // Update check_run with final overall status
+    $updateRunStmt = $pdo->prepare("UPDATE check_run SET overall_status = :status WHERE check_run_id = :id");
+    $updateRunStmt->execute([
+        'status' => $overall_health,
+        'id' => $check_run_id
+    ]);
+    
+    // Update device current health status
+    $updateDeviceStmt = $pdo->prepare("UPDATE device SET current_health_status = :status WHERE device_id = :id");
+    $updateDeviceStmt->execute([
+        'status' => $overall_health,
+        'id' => $device_id
+    ]);
 
     // Commit the transaction to MySQL
     $pdo->commit();
@@ -116,7 +179,8 @@ try {
     echo json_encode([
         "status" => "success", 
         "message" => "Telemetry received and stored successfully",
-        "check_run_id" => (int)$check_run_id
+        "check_run_id" => (int)$check_run_id,
+        "device_uuid" => $payload['device_uuid']
     ]);
 
 } catch (PDOException $e) {
