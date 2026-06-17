@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NetSentinel - Security Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
+    <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.4/js/dataTables.bootstrap5.min.js"></script>   
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -169,5 +172,32 @@
             });
         }
     </script>
+    <div class="alert alert-info text-center mt-4">
+    <strong>🔄 ARM Instance Status:</strong> 
+    <span id="arm-status">Praying to the Oracle Cloud Gods... 🙏</span>
+    <button class="btn btn-sm btn-outline-info ms-2" onclick="checkArmStatus()">Check Again</button>
+</div>
+
+<script>
+function checkArmStatus() {
+    const statusDiv = document.getElementById('arm-status');
+    const messages = [
+        "Still waiting... 😢",
+        "Oracle Cloud is thinking... 🤔",
+        "Almost there... maybe? 🥺",
+        "Day 4 of ARM quest... ⚔️",
+        "Your patience is legendary! 🏆",
+        "Checking availability... 🔄",
+        "The cloud gods are sleeping... 😴",
+        "Still begging... PLEASE! 🙏",
+        "Perhaps at 4 AM? 🌙",
+        "ARM capacity: loading... 💫"
+    ];
+    const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+    statusDiv.textContent = randomMessage;
+}
+// Auto-check every 30 seconds just for fun
+setInterval(checkArmStatus, 30000);
+</script>
 </body>
 </html>
