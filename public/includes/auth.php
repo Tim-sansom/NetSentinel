@@ -1,73 +1,114 @@
 <?php
 /**
- * NetSentinel API Authentication
- * Validates Bearer tokens for incoming agent requests.
- * Fulfills SR2.
+ * NetSentinel Authentication & Authorization
+ * Handles both API token validation (for agents) and 
+ * Session-based login (for dashboard users).
  */
 
-function authenticate_api_request($pdo) {
-    // 1. Check if Authorization header exists
-    $headers = getallheaders();
-    if (!isset($headers['Authorization'])) {
-        http_response_code(401);
-        echo json_encode(['success' => false, 'error' => 'Missing Authorization header']);
-        exit;
+// ============================================
+// 1. SESSION-BASED AUTH (For Dashboard Pages)
+// ============================================
+
+/**
+ * Ensures a user is logged in via PHP session.
+ * If not logged in, redirects to login.php and exits.
+ */
+function requireLogin(): void {
+    // Start session if not already started
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
     }
 
-    // 2. Check if it's a Bearer token
-    $auth_header = $headers['Authorization'];
-    if (strpos($auth_header, 'Bearer ') !== 0) {
-        http_response_code(401);
-        echo json_encode(['success' => false, 'error' => 'Invalid Authorization format. Use Bearer token.']);
+    // Check if user is logged in
+    if (!isset($_SESSION['user_id'])) {
+        // Redirect to login page
+        header('Location: login.php');
         exit;
     }
-
-    // 3. Extract the token
-    $token = trim(substr($auth_header, 7));
-
-    if (empty($token)) {
-        http_response_code(401);
-        echo json_encode(['success' => false, 'error' => 'Empty token provided']);
-        exit;
-    }
-
-    // 4. Validate token against the database
-    // Note: Adjust table/column names if your 01-schema.sql uses different names
-    // Assuming a table named `devices` with columns `device_uuid` and `api_token`
-    $stmt = $pdo->prepare("SELECT device_uuid FROM devices WHERE api_token = :token LIMIT 1");
-    $stmt->execute(['token' => $token]);
-    $device = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$device) {
-        http_response_code(403);
-        echo json_encode(['success' => false, 'error' => 'Invalid or unauthorized API token']);
-        exit;
-    }
-
-    // 5. Return the authenticated device UUID for use in the endpoint
-    return $device['device_uuid'];
 }
 
 /**
- * Validates that the incoming request is valid JSON and contains required fields.
- * Fulfills SR3.
+ * Ensures the logged-in user has the 'admin' role.
+ * Must be called AFTER requireLogin().
  */
-function validate_json_payload() {
-    $input = file_get_contents('php://input');
-    $data = json_decode($input, true);
+function requireAdmin(): void {
+    requireLogin(); // Ensure logged in first
+    
+    if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
+        http_response_code(403);
+        die('Access denied. Admin privileges required.');
+    }
+}
 
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        http_response_code(400);
-        echo json_encode(['success' => false, 'error' => 'Invalid JSON payload']);
+/**
+ * Check if the current user has a specific role.
+ * 
+ * @param string $role The role to check (e.g., 'admin', 'viewer')
+ * @return bool
+ */
+function hasRole(string $role): bool {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    return isset($_SESSION['role']) && $_SESSION['role'] === $role;
+}
+
+// ============================================
+// 2. TOKEN-BASED AUTH (For API Endpoints)
+// ============================================
+
+/**
+ * Validates the API token from the agent.
+ * Expects token in the "Authorization: Bearer <token>" header.
+ * 
+ * @param PDO $pdo Database connection
+ * @return array|false Returns device info array if valid, false otherwise
+ */
+function validateApiToken(PDO $pdo): array|false {
+    // Get the Authorization header
+    $headers = getallheaders();
+    $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+    
+    if (empty($authHeader) || !str_starts_with($authHeader, 'Bearer ')) {
+        return false;
+    }
+    
+    // Extract the token
+    $token = substr($authHeader, 7);
+    
+    try {
+        // Look up the device by API token
+        $stmt = $pdo->prepare("
+            SELECT device_id, hostname, is_active 
+            FROM device 
+            WHERE api_token = ? AND is_active = 1
+        ");
+        $stmt->execute([$token]);
+        $device = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        return $device ?: false;
+        
+    } catch (PDOException $e) {
+        error_log("API Auth Error: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Require a valid API token. Exits with 401 if invalid.
+ * 
+ * @param PDO $pdo Database connection
+ * @return array Returns device info array
+ */
+function requireApiToken(PDO $pdo): array {
+    $device = validateApiToken($pdo);
+    
+    if (!$device) {
+        http_response_code(401);
+        header('Content-Type: application/json');
+        echo json_encode(['error' => 'Unauthorized: Invalid or missing API token']);
         exit;
     }
-
-    // Basic validation for NetSentinel agent payload
-    if (!isset($data['device_uuid']) || !isset($data['checks']) || !is_array($data['checks'])) {
-        http_response_code(400);
-        echo json_encode(['success' => false, 'error' => 'Missing required fields: device_uuid, checks']);
-        exit;
-    }
-
-    return $data;
+    
+    return $device;
 }
