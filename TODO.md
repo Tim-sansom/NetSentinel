@@ -1,4 +1,4 @@
-NetSentinel Project Task Board
+# NetSentinel Project Task Board
 
 Stage 1: Scope Lock (Planning)
 [x] Reconfirm MVP and freeze scope
