@@ -37,17 +37,17 @@ Stage 5: Dashboard v1 (Frontend)
 [x] Implement auto-refresh / AJAX polling for live updates
 
 Stage 6: Lab & Evaluation Setup
-[ ] Provision Proxmox VMs (1x LAMP, 1x Win10, 1x Ubuntu)
-[ ] Deploy backend to LAMP VM
-[ ] Deploy agents to endpoint VMs
-[ ] Define 4-6 test scenarios (e.g., open RDP, disabled firewall)
-[ ] Run evaluation and capture metrics (CPU/RAM/Latency)
+[x] Provision Proxmox VMs (1x LAMP, 1x Win10, 1x Ubuntu)
+[x] Deploy backend to LAMP VM
+[x] Deploy agents to endpoint VMs
+[x] Define 4-6 test scenarios (e.g., open RDP, disabled firewall)
+[ ] Run evaluation and capture metrics (CPU/RAM/Latency) Moved to stage 10
 
 Stage 7: Agent Expansion & Cross-Platform Testing
-[ ] Expand remaining agent checks (if MVP stable)
-[ ] Test and refine agent on Windows VM
-[ ] Test and refine agent on Linux VM
-[ ] Test and refine agent on macOS VM (if applicable/stretch)
+[x] Expand remaining agent checks (if MVP stable)
+[x] Test and refine agent on Windows VM
+[x] Test and refine agent on Linux VM
+[x] Test and refine agent on macOS VM (if applicable/stretch)
 
 Stage 8: Hardening & Security
 [ ] Add API rate limiting
