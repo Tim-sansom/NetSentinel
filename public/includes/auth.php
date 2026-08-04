@@ -14,14 +14,11 @@
  * If not logged in, redirects to login.php and exits.
  */
 function requireLogin(): void {
-    // Start session if not already started
     if (session_status() === PHP_SESSION_NONE) {
         session_start();
     }
 
-    // Check if user is logged in
     if (!isset($_SESSION['user_id'])) {
-        // Redirect to login page
         header('Location: login.php');
         exit;
     }
@@ -32,7 +29,7 @@ function requireLogin(): void {
  * Must be called AFTER requireLogin().
  */
 function requireAdmin(): void {
-    requireLogin(); // Ensure logged in first
+    requireLogin(); 
     
     if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
         http_response_code(403);
@@ -42,9 +39,6 @@ function requireAdmin(): void {
 
 /**
  * Check if the current user has a specific role.
- * 
- * @param string $role The role to check (e.g., 'admin', 'viewer')
- * @return bool
  */
 function hasRole(string $role): bool {
     if (session_status() === PHP_SESSION_NONE) {
@@ -54,61 +48,87 @@ function hasRole(string $role): bool {
 }
 
 // ============================================
-// 2. TOKEN-BASED AUTH (For API Endpoints)
+// 2. TOKEN-BASED AUTH (For API Endpoints - Agents)
 // ============================================
 
 /**
- * Validates the API token from the agent.
- * Expects token in the "Authorization: Bearer <token>" header.
+ * Validates the API token from the agent and returns the device_uuid.
+ * Uses secure hashed token comparison (Fulfills SR2).
  * 
  * @param PDO $pdo Database connection
- * @return array|false Returns device info array if valid, false otherwise
+ * @return string The authenticated device_uuid
  */
-function validateApiToken(PDO $pdo): array|false {
-    // Get the Authorization header
+function authenticate_api_request(PDO $pdo): string {
+    // 1. Extract Bearer token
     $headers = getallheaders();
     $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? '';
     
     if (empty($authHeader) || !str_starts_with($authHeader, 'Bearer ')) {
-        return false;
+        http_response_code(401);
+        header('Content-Type: application/json');
+        echo json_encode(['status' => 'error', 'message' => 'Missing Authorization header']);
+        exit;
     }
     
-    // Extract the token
     $token = substr($authHeader, 7);
+    $token_hash = hash('sha256', $token); // Hash the incoming token
     
     try {
-        // Look up the device by API token
+        // 2. Look up device by HASHED token
+        // Using is_active = 1 ensures revoked tokens are rejected
         $stmt = $pdo->prepare("
-            SELECT device_id, hostname, is_active 
+            SELECT device_uuid 
             FROM device 
-            WHERE api_token = ? AND is_active = 1
+            WHERE token_hash = :hash AND is_active = 1 
+            LIMIT 1
         ");
-        $stmt->execute([$token]);
+        $stmt->execute(['hash' => $token_hash]);
         $device = $stmt->fetch(PDO::FETCH_ASSOC);
         
-        return $device ?: false;
+        if (!$device) {
+            // 3. Audit log the failed attempt (Fulfills SR4)
+            try {
+                $logStmt = $pdo->prepare("
+                    INSERT INTO audit_log (event_type, detail, created_at) 
+                    VALUES ('agent_auth_fail', 'Invalid or revoked token presented', NOW())
+                ");
+                $logStmt->execute();
+            } catch (Throwable $e) { 
+                // Non-fatal: don't break auth flow if audit log fails
+            }
+            
+            http_response_code(401);
+            header('Content-Type: application/json');
+            echo json_encode(['status' => 'error', 'message' => 'Invalid agent token']);
+            exit;
+        }
+        
+        // 4. Return the UUID so submit.php can verify payload integrity
+        return $device['device_uuid'];
         
     } catch (PDOException $e) {
-        error_log("API Auth Error: " . $e->getMessage());
-        return false;
+        error_log("NetSentinel API Auth Error: " . $e->getMessage());
+        http_response_code(500);
+        header('Content-Type: application/json');
+        echo json_encode(['status' => 'error', 'message' => 'Internal server error during auth']);
+        exit;
     }
 }
 
 /**
- * Require a valid API token. Exits with 401 if invalid.
- * 
- * @param PDO $pdo Database connection
- * @return array Returns device info array
+ * Validates the incoming JSON payload from the agent.
+ * Fulfills SR3 (Input Validation).
  */
-function requireApiToken(PDO $pdo): array {
-    $device = validateApiToken($pdo);
+function validate_json_payload(): array {
+    $raw = file_get_contents('php://input');
+    $data = json_decode($raw, true);
     
-    if (!$device) {
-        http_response_code(401);
+    if (!is_array($data) || !isset($data['device_uuid'], $data['checks']) || !is_array($data['checks'])) {
+        http_response_code(400);
         header('Content-Type: application/json');
-        echo json_encode(['error' => 'Unauthorized: Invalid or missing API token']);
+        echo json_encode(['status' => 'error', 'message' => 'Malformed JSON payload']);
         exit;
     }
     
-    return $device;
+    return $data;
 }

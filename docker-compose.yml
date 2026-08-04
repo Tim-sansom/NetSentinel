@@ -1,12 +1,15 @@
 services:
   dashboard:
-    build: .  # <-- CHANGED FROM image: php:8.3-apache
+    build: .
     platform: linux/amd64
     container_name: netsentinel-dashboard
     ports:
       - "8088:80"
+      - "8443:443"  # HTTPS for external agents
     volumes:
       - ./public:/var/www/html:delegated
+      - ./certs:/etc/apache2/certs:ro  # SSL certificates
+      - ./apache-config/netsentinel-ssl.conf:/etc/apache2/sites-enabled/netsentinel-ssl.conf:ro # SSL vhost config
     environment:
       NETSENTINEL_ENV: development
       DB_HOST: mysql
@@ -31,7 +34,7 @@ services:
     environment:
       PYTHONUNBUFFERED: "1"
       NETSENTINEL_ENV: development
-      API_URL: http://dashboard:80/api/submit.php
+      API_URL: http://dashboard:80/api/submit.php  # Keep HTTP for internal Docker network
       DEVICE_ID: agent-001
       DB_HOST: mysql
       DB_NAME: netsentinel

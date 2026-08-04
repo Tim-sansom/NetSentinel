@@ -14,6 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 // Include the secure database connection and authentication
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/findings.php'; // Stateful finding logic
 
 // 1. AUTHENTICATE: Validate Bearer token (Fulfills SR2)
 $authenticated_device_uuid = authenticate_api_request($pdo);
@@ -55,7 +56,7 @@ try {
     }
 
     // 5. Insert the Check Run record
-    $runStmt = $pdo->prepare("INSERT INTO check_run (device_id, check_timestamp, overall_status) 
+    $runStmt = $pdo->prepare("INSERT INTO check_run (device_id, run_timestamp, overall_status) 
                               VALUES (:device_id, :timestamp, 'pending')");
     $runStmt->execute([
         'device_id' => $device_id,
@@ -65,6 +66,7 @@ try {
 
     // 6. Process each check result from the agent
     $overall_health = 'healthy'; // Default to healthy
+    $observed = []; // Array to hold active stateful findings for this run
     
     foreach ($payload['checks'] as $check) {
         $check_name = $check['check_name'] ?? 'unknown';
@@ -80,70 +82,102 @@ try {
             $overall_health = 'warning';
         }
         
-        // Insert into appropriate finding table based on check type
+        // Insert into appropriate finding table based on check type (Historical Events)
         switch ($check_name) {
             case 'system_info':
                 // Update device with system info
                 $hostname = $details['hostname'] ?? 'unknown';
-                $os_name = $details['os_name'] ?? 'unknown';
+                $os_family = $details['os_family'] ?? 'unknown'; 
                 $os_version = $details['os_version'] ?? 'unknown';
                 
                 $sysStmt = $pdo->prepare("UPDATE device SET hostname = :hostname, os_family = :os_family, 
                                          os_version = :os_version WHERE device_id = :id");
                 $sysStmt->execute([
                     'hostname' => $hostname,
-                    'os_family' => $os_name,
+                    'os_family' => $os_family,
                     'os_version' => $os_version,
                     'id' => $device_id
                 ]);
                 
-                // Insert system finding
+                // Insert system finding (Historical)
                 $sysFindStmt = $pdo->prepare("INSERT INTO system_finding (check_run_id, hostname, os_name, os_version, 
                                              architecture, uptime_seconds) 
                                              VALUES (:check_run_id, :hostname, :os_name, :os_version, :arch, :uptime)");
                 $sysFindStmt->execute([
                     'check_run_id' => $check_run_id,
                     'hostname' => $hostname,
-                    'os_name' => $os_name,
+                    'os_name' => $os_family, 
                     'os_version' => $os_version,
                     'arch' => $details['architecture'] ?? 'unknown',
                     'uptime' => $details['uptime_seconds'] ?? 0
                 ]);
+
+                if (!empty($details['outdated']) || $status === 'warning') {
+                    $observed[] = [
+                        'finding_key' => 'system:outdated_os',
+                        'severity'    => 'medium',
+                        'detail'      => ['os' => $os_version]
+                    ];
+                }
                 break;
                 
             case 'port_check':
-                // Insert port findings
                 if (!empty($details['open_ports']) && is_array($details['open_ports'])) {
-                    $portStmt = $pdo->prepare("INSERT INTO port_finding (check_run_id, port_number, service_name, status, severity) 
-                                              VALUES (:check_run_id, :port, :service, :status, :severity)");
+                    $portStmt = $pdo->prepare("INSERT INTO port_finding (check_run_id, port_number, protocol, process_name, status, severity) 
+                                              VALUES (:check_run_id, :port, :protocol, :process, :status, :severity)");
                     
                     foreach ($details['open_ports'] as $port) {
+                        $port_num = $port['port'] ?? 0;
                         $portStmt->execute([
                             'check_run_id' => $check_run_id,
-                            'port' => $port['port'] ?? 0,
-                            'service' => $port['service'] ?? 'unknown',
+                            'port' => $port_num,
+                            'protocol' => $port['protocol'] ?? 'tcp',
+                            'process' => $port['service'] ?? 'unknown',
                             'status' => 'open',
                             'severity' => $severity
                         ]);
+
+                        if (in_array((int)$port_num, [22, 445, 3389], true)) {
+                            $observed[] = [
+                                'finding_key' => "port:$port_num",
+                                'severity'    => ((int)$port_num === 22) ? 'medium' : 'high',
+                                'detail'      => $port
+                            ];
+                        }
                     }
                 }
                 break;
                 
             case 'firewall_check':
-                // Insert firewall finding
                 $fw_enabled = ($status === 'pass') ? 1 : 0;
-                $fwStmt = $pdo->prepare("INSERT INTO firewall_finding (check_run_id, enabled, status, details) 
-                                        VALUES (:check_run_id, :enabled, :status, :details)");
+                $fw_profile = $details['firewall'] ?? $details['os'] ?? 'unknown';
+                
+                $fwStmt = $pdo->prepare("INSERT INTO firewall_finding (check_run_id, profile, enabled, risky_rule_count, status) 
+                                        VALUES (:check_run_id, :profile, :enabled, :risky, :status)");
                 $fwStmt->execute([
                     'check_run_id' => $check_run_id,
+                    'profile' => $fw_profile,
                     'enabled' => $fw_enabled,
-                    'status' => $status,
-                    'details' => json_encode($details)
+                    'risky' => 0, 
+                    'status' => $status
                 ]);
+
+                if ($status === 'fail' || $status === 'error') {
+                    $observed[] = [
+                        'finding_key' => 'firewall:disabled',
+                        'severity'    => 'high',
+                        'detail'      => $details
+                    ];
+                } elseif ($status === 'warning' || $status === 'unknown') {
+                    $observed[] = [
+                        'finding_key' => 'firewall:unknown',
+                        'severity'    => 'medium',
+                        'detail'      => $details
+                    ];
+                }
                 break;
                 
             case 'latency_check':
-                // Insert latency finding
                 $latency_ms = $details['latency_ms'] ?? 0;
                 $latStmt = $pdo->prepare("INSERT INTO latency_finding (check_run_id, target, latency_ms, status) 
                                          VALUES (:check_run_id, :target, :latency, :status)");
@@ -153,9 +187,44 @@ try {
                     'latency' => $latency_ms,
                     'status' => $status
                 ]);
+
+                if (is_numeric($latency_ms) && (float)$latency_ms > 500) {
+                    $observed[] = [
+                        'finding_key' => 'latency:high',
+                        'severity'    => 'low',
+                        'detail'      => ['ms' => (float)$latency_ms, 'target' => $details['target'] ?? '']
+                    ];
+                }
+                break;
+
+            case 'patch_check':
+                $patchStmt = $pdo->prepare("INSERT INTO patch_finding (check_run_id, missing_critical_count, missing_important_count, latest_update_count, high_severity_cve_count) 
+                                            VALUES (:cr, :crit, :imp, :latest, :cve)");
+                $patchStmt->execute([
+                    'cr'   => $check_run_id,
+                    'crit' => (int)($details['missing_critical_count'] ?? 0),
+                    'imp'  => (int)($details['missing_important_count'] ?? 0),
+                    'latest' => (int)($details['latest_update_count'] ?? 0),
+                    'cve'  => (int)($details['high_severity_cve_count'] ?? 0)
+                ]);
+
+                if (!($details['os_supported'] ?? true)) {
+                    $observed[] = ['finding_key' => 'patch:outdated_os', 'severity' => 'high',
+                                   'detail' => ['last_patch_date' => $details['last_patch_date'] ?? null]];
+                }
+                if ((int)($details['missing_critical_count'] ?? 0) > 0) {
+                    $observed[] = ['finding_key' => 'patch:pending_critical', 'severity' => 'high',
+                                   'detail' => ['count' => (int)$details['missing_critical_count']]];
+                }
+                if (!($details['auto_updates'] ?? false)) {
+                    $observed[] = ['finding_key' => 'patch:auto_updates_off', 'severity' => 'medium', 'detail' => []];
+                }
                 break;
         }
     }
+    
+    // Process the unified finding state (Upsert open, auto-resolve stale)
+    record_findings($pdo, (int)$device_id, $observed, 15); 
     
     // Update check_run with final overall status
     $updateRunStmt = $pdo->prepare("UPDATE check_run SET overall_status = :status WHERE check_run_id = :id");

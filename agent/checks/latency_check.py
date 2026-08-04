@@ -7,6 +7,7 @@ import platform
 import subprocess
 import re
 import logging
+import urllib.parse
 from .base_check import BaseCheck, CheckResult
 
 
@@ -14,13 +15,6 @@ class LatencyCheck(BaseCheck):
     """Measures network latency to the backend API server using ICMP ping."""
 
     def __init__(self, target: str = "8.8.8.8"):
-        """
-        Initialize the latency check.
-        
-        Args:
-            target: The hostname or IP address to ping. 
-                    Defaults to 8.8.8.8 (Google DNS) if not specified.
-        """
         super().__init__(
             name="latency_check",
             description=f"Measures network latency to {target}."
@@ -29,51 +23,49 @@ class LatencyCheck(BaseCheck):
         self.logger = logging.getLogger("netsentinel.checks.latency_check")
 
     def check(self) -> CheckResult:
-        """
-        Perform the latency check.
-        
-        Returns:
-            CheckResult with latency details in milliseconds.
-        """
+        # Strip scheme/port/path so ping receives a bare host (e.g. 192.168.0.7)
+        parsed = urllib.parse.urlparse(self.target)
+        host_to_ping = parsed.hostname if parsed.hostname else self.target
+
         os_name = platform.system().lower()
-        
+
         try:
-            # Build the ping command based on the OS
             if os_name == "windows":
-                # -n 1: send 1 packet, -w 2000: timeout after 2000ms
-                cmd = ["ping", "-n", "1", "-w", "2000", self.target]
+                cmd = ["ping", "-n", "1", "-w", "2000", host_to_ping]
+            elif os_name == "darwin":
+                # macOS: -W is in milliseconds
+                cmd = ["ping", "-c", "1", "-W", "2000", host_to_ping]
             else:
-                # macOS and Linux
-                # -c 1: send 1 packet, -W 2: timeout after 2 seconds
-                cmd = ["ping", "-c", "1", "-W", "2", self.target]
+                # Linux: -W is in seconds
+                cmd = ["ping", "-c", "1", "-W", "2", host_to_ping]
 
-            # Run the command
-            result = subprocess.run(
-                cmd, 
-                capture_output=True, 
-                text=True, 
-                timeout=10,
-                creationflags=subprocess.CREATE_NO_WINDOW if os_name == "windows" else 0
-            )
+            kwargs = {
+                "capture_output": True,
+                "text": True,
+                "timeout": 10
+            }
+            # creationflags is a Windows-only argument
+            if os_name == "windows":
+                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
 
-            # Parse the output to find the latency
+            result = subprocess.run(cmd, **kwargs)
+
             latency_ms = self._parse_ping_output(result.stdout, os_name)
 
             if latency_ms is not None:
-                # Determine severity based on latency thresholds
                 if latency_ms < 100:
                     severity = "low"
                     status = "pass"
-                    message = f"Good latency to {self.target}: {latency_ms}ms"
+                    message = f"Good latency to {host_to_ping}: {latency_ms}ms"
                 elif latency_ms < 300:
                     severity = "medium"
                     status = "pass"
-                    message = f"Acceptable latency to {self.target}: {latency_ms}ms"
+                    message = f"Acceptable latency to {host_to_ping}: {latency_ms}ms"
                 else:
                     severity = "high"
                     status = "warning"
-                    message = f"High latency to {self.target}: {latency_ms}ms"
-                
+                    message = f"High latency to {host_to_ping}: {latency_ms}ms"
+
                 return CheckResult(
                     check_name=self.name,
                     status=status,
@@ -82,21 +74,20 @@ class LatencyCheck(BaseCheck):
                     details={"target": self.target, "latency_ms": latency_ms}
                 )
             else:
-                # Ping command ran, but we couldn't parse a time (e.g., host unreachable)
                 return CheckResult(
                     check_name=self.name,
                     status="fail",
-                    message=f"Could not reach {self.target} or parse ping output.",
+                    message=f"Could not reach {host_to_ping} or parse ping output.",
                     severity="high",
                     details={"target": self.target, "raw_output": result.stdout.strip()[:200]}
                 )
 
         except subprocess.TimeoutExpired:
-            self.logger.warning(f"Ping to {self.target} timed out.")
+            self.logger.warning(f"Ping to {host_to_ping} timed out.")
             return CheckResult(
                 check_name=self.name,
                 status="fail",
-                message=f"Connection to {self.target} timed out.",
+                message=f"Connection to {host_to_ping} timed out.",
                 severity="high",
                 details={"target": self.target}
             )
@@ -120,13 +111,7 @@ class LatencyCheck(BaseCheck):
             )
 
     def _parse_ping_output(self, output: str, os_name: str) -> float:
-        """
-        Extract the latency in milliseconds from the ping command output.
-        Works for Windows, Linux, and macOS.
-        """
-        # Regex looks for "time=12ms" (Windows) or "time=0.5 ms" (Linux/Mac)
         match = re.search(r"time[=<]([\d.]+)\s*ms", output, re.IGNORECASE)
-        
         if match:
             try:
                 return float(match.group(1))

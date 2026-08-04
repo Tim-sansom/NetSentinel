@@ -47,20 +47,20 @@ class NetSentinelAgent:
     def _load_checks(self) -> list:
         """
         Load all available security checks.
-        
-        Returns:
-            List of check instances.
         """
         from checks.system_info import SystemInfoCheck
         from checks.port_check import PortCheck
         from checks.firewall_check import FirewallCheck
         from checks.latency_check import LatencyCheck
+        from checks.patch_check import PatchCheck
+        from checks.patch_check import PatchCheck  # NEW
         
         checks = [
             SystemInfoCheck(),
             PortCheck(),
             FirewallCheck(),
-            LatencyCheck(target=self.config.api_url)
+            LatencyCheck(target=self.config.api_url),
+            PatchCheck()  # NEW
         ]
         
         self.logger.info(f"Loaded {len(checks)} security checks")
@@ -85,10 +85,10 @@ class NetSentinelAgent:
                 
                 # Log result summary
                 status_emoji = {
-                    'pass': '✓',
-                    'fail': '✗',
-                    'warning': '⚠',
-                    'error': '⚠'
+                    'pass': '[PASS]',
+                    'fail': '[FAIL]',
+                    'warning': '[WARN]',
+                    'error': '[WARN]'
                 }.get(result.status, '?')
                 
                 self.logger.info(

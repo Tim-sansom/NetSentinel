@@ -28,18 +28,32 @@ try {
         exit;
     }
 
-    // 2. Fetch Latency Data for Chart (Last 50 runs from check_run directly)
+    // 2. FIXED: Fetch latest Architecture from system_finding
     $stmt = $pdo->prepare("
-        SELECT run_timestamp, latency_ms 
-        FROM check_run 
-        WHERE device_id = ?
-        ORDER BY run_timestamp ASC
+        SELECT sf.architecture 
+        FROM system_finding sf
+        JOIN check_run c ON sf.check_run_id = c.check_run_id
+        WHERE c.device_id = ?
+        ORDER BY c.run_timestamp DESC
+        LIMIT 1
+    ");
+    $stmt->execute([$device_id]);
+    $latest_sys = $stmt->fetch(PDO::FETCH_ASSOC);
+    $architecture = $latest_sys['architecture'] ?? 'N/A';
+
+    // 3. FIXED: Fetch Latency Data by joining check_run and latency_finding
+    $stmt = $pdo->prepare("
+        SELECT c.run_timestamp, l.latency_ms 
+        FROM check_run c
+        JOIN latency_finding l ON c.check_run_id = l.check_run_id
+        WHERE c.device_id = ?
+        ORDER BY c.run_timestamp ASC
         LIMIT 50
     ");
     $stmt->execute([$device_id]);
     $latency_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // 3. Fetch Recent Findings (Port and Firewall only, as system_finding is just metadata)
+    // 4. FIXED: Fetch Recent Findings (Port, Firewall, AND Patch)
     $stmt = $pdo->prepare("
         SELECT 'Port' as type, 
                CONCAT('Port ', p.port_number, ' (', COALESCE(p.process_name, 'Unknown'), ')') as detail, 
@@ -52,17 +66,28 @@ try {
         UNION ALL
         
         SELECT 'Firewall' as type, 
-               CONCAT('Profile: ', COALESCE(f.profile, 'Unknown'), ' | Risky Rules: ', f.risky_rule_count) as detail, 
-               CASE WHEN f.status = 'Warning' THEN 'high' ELSE 'info' END as severity, 
+               CONCAT('Profile: ', COALESCE(f.profile, 'Unknown')) as detail, 
+               CASE WHEN f.status = 'fail' THEN 'high' ELSE 'info' END as severity, 
                c.run_timestamp 
         FROM firewall_finding f 
         JOIN check_run c ON f.check_run_id = c.check_run_id 
         WHERE c.device_id = ?
         
+        UNION ALL
+        
+        SELECT 'Patch' as type, 
+               CONCAT('Critical Pending: ', p.missing_critical_count, ' | Important: ', p.missing_important_count) as detail, 
+               CASE WHEN p.missing_critical_count > 0 THEN 'high' WHEN p.missing_important_count > 0 THEN 'medium' ELSE 'info' END as severity, 
+               c.run_timestamp 
+        FROM patch_finding p 
+        JOIN check_run c ON p.check_run_id = c.check_run_id 
+        WHERE c.device_id = ?
+        
         ORDER BY run_timestamp DESC
         LIMIT 50
     ");
-    $stmt->execute([$device_id, $device_id]);
+    // Note: 3 parameters now for the 3 UNION blocks
+    $stmt->execute([$device_id, $device_id, $device_id]);
     $findings = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 } catch (PDOException $e) {
@@ -96,7 +121,7 @@ try {
             </div>
             <div class="col-md-3 mb-3">
                 <small class="text-muted d-block">Architecture</small>
-                <strong><?= htmlspecialchars($device['architecture'] ?? 'N/A') ?></strong>
+                <strong><?= htmlspecialchars($architecture) ?></strong>
             </div>
             <div class="col-md-3 mb-3">
                 <small class="text-muted d-block">Last Seen</small>
@@ -104,7 +129,17 @@ try {
             </div>
             <div class="col-md-3 mb-3">
                 <small class="text-muted d-block">Health Status</small>
-                <span class="badge bg-<?= ($device['current_health_status'] ?? '') === 'Warning' ? 'warning text-dark' : 'success' ?>">
+                <?php 
+                    // FIXED: Proper color mapping for health status
+                    $health_status = strtolower($device['current_health_status'] ?? 'unknown');
+                    $badge_class = match($health_status) {
+                        'healthy' => 'bg-success',
+                        'warning' => 'bg-warning text-dark',
+                        'unhealthy' => 'bg-danger',
+                        default => 'bg-secondary'
+                    };
+                ?>
+                <span class="badge <?= $badge_class ?>">
                     <?= htmlspecialchars($device['current_health_status'] ?? 'Unknown') ?>
                 </span>
             </div>
@@ -154,8 +189,9 @@ try {
                             $sev = strtolower($finding['severity'] ?? 'info');
                             $badge = match($sev) {
                                 'critical' => 'bg-danger',
-                                'high' => 'bg-warning text-dark',
-                                'medium' => 'bg-info text-dark',
+                                'high' => 'bg-danger',
+                                'medium' => 'bg-warning text-dark',
+                                'low' => 'bg-info text-dark',
                                 default => 'bg-secondary'
                             };
                         ?>
