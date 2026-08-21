@@ -37,6 +37,14 @@ class AgentConfig:
         self.log_level: str = os.getenv('NETSENTINEL_LOG_LEVEL', 'INFO').upper()
         self.verify_ssl: bool = os.getenv('NETSENTINEL_VERIFY_SSL', 'true').lower() == 'true'
         
+        # Check module toggles (allows SMEs to disable specific checks to save resources)
+        self.enable_system_check: bool = os.getenv('NETSENTINEL_ENABLE_SYSTEM_CHECK', 'true').lower() == 'true'
+        self.enable_port_check: bool = os.getenv('NETSENTINEL_ENABLE_PORT_CHECK', 'true').lower() == 'true'
+        self.enable_firewall_check: bool = os.getenv('NETSENTINEL_ENABLE_FIREWALL_CHECK', 'true').lower() == 'true'
+        self.enable_latency_check: bool = os.getenv('NETSENTINEL_ENABLE_LATENCY_CHECK', 'true').lower() == 'true'
+        self.enable_log_check: bool = os.getenv('NETSENTINEL_ENABLE_LOG_CHECK', 'true').lower() == 'true'
+        self.enable_software_check: bool = os.getenv('NETSENTINEL_ENABLE_SOFTWARE_CHECK', 'true').lower() == 'true'
+        
         # Derived configuration
         self.agent_version: str = "1.0.0"
         self.agent_platform: str = self._detect_platform()

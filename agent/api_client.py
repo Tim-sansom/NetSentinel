@@ -60,7 +60,7 @@ class ApiClient:
         """
         payload = {
             'device_uuid': device_uuid,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'checks': check_results
         }
         

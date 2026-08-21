@@ -8,7 +8,7 @@ import signal
 import argparse
 from pathlib import Path
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from config import AgentConfig
 from logger import setup_logger
@@ -41,34 +41,52 @@ class NetSentinelAgent:
         # Flag for graceful shutdown
         self.running = False
         
-        # Import checks dynamically
+        # Import checks dynamically based on config
         self.checks = self._load_checks()
     
     def _load_checks(self) -> list:
         """
-        Load all available security checks.
+        Load enabled security checks based on configuration.
         """
+        checks = []
+        
+        # Core Checks (Always enabled for MVP)
         from checks.system_info import SystemInfoCheck
         from checks.port_check import PortCheck
         from checks.firewall_check import FirewallCheck
         from checks.latency_check import LatencyCheck
         from checks.patch_check import PatchCheck
-        from checks.patch_check import PatchCheck  # NEW
         
-        checks = [
-            SystemInfoCheck(),
-            PortCheck(),
-            FirewallCheck(),
-            LatencyCheck(target=self.config.api_url),
-            PatchCheck()  # NEW
-        ]
+        checks.append(SystemInfoCheck())
+        checks.append(PortCheck())
+        checks.append(FirewallCheck())
+        checks.append(LatencyCheck(target=self.config.api_url))
+        checks.append(PatchCheck())
         
+        # Optional: Log Anomaly Check (Lightweight SIEM)
+        if self.config.enable_log_check:
+            try:
+                from checks.log_check import LogCheck
+                checks.append(LogCheck())
+                self.logger.info("LogCheck enabled")
+            except ImportError:
+                self.logger.warning("LogCheck module not found, skipping.")
+        
+        # Optional: Anomaly/Persistence Check (Detects suspicious ports/services)
+        if self.config.enable_anomaly_check:
+            try:
+                from checks.anomaly_check import AnomalyCheck
+                checks.append(AnomalyCheck())
+                self.logger.info("AnomalyCheck enabled")
+            except ImportError:
+                self.logger.warning("AnomalyCheck module not found, skipping.")
+
         self.logger.info(f"Loaded {len(checks)} security checks")
         return checks
     
     def run_checks(self) -> list[CheckResult]:
         """
-        Execute all security checks.
+        Execute all enabled security checks.
         
         Returns:
             List of check results.
@@ -88,15 +106,15 @@ class NetSentinelAgent:
                     'pass': '[PASS]',
                     'fail': '[FAIL]',
                     'warning': '[WARN]',
-                    'error': '[WARN]'
-                }.get(result.status, '?')
+                    'error': '[ERR]'
+                }.get(result.status, '[?]')
                 
                 self.logger.info(
-                    f"{status_emoji} {check.name}: {result.status} - {result.message}"
+                    f"{status_emoji} {check.name}: {result.status.upper()} - {result.message}"
                 )
                 
             except Exception as e:
-                # Catch any unexpected errors in checks
+                # Catch any unexpected errors in checks to prevent agent crash
                 self.logger.error(f"Check {check.name} failed with exception: {str(e)}")
                 results.append(CheckResult(
                     check_name=check.name,
@@ -121,6 +139,7 @@ class NetSentinelAgent:
         """
         try:
             # Convert CheckResult objects to dictionaries
+            # Ensure your CheckResult class has a to_dict() method
             results_dict = [result.to_dict() for result in results]
             
             response = self.api_client.submit_check_results(
@@ -142,7 +161,8 @@ class NetSentinelAgent:
         Returns:
             True if the cycle completed successfully.
         """
-        start_time = datetime.utcnow()
+        # Use timezone-aware UTC time to match PHP's expectations
+        start_time = datetime.now(timezone.utc)
         self.logger.info(f"=== Check cycle started at {start_time.isoformat()} ===")
         
         try:
@@ -153,7 +173,7 @@ class NetSentinelAgent:
             success = self.submit_results(results)
             
             # Calculate duration
-            duration = (datetime.utcnow() - start_time).total_seconds()
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             self.logger.info(f"=== Check cycle completed in {duration:.2f}s ===")
             
             return success
@@ -173,13 +193,13 @@ class NetSentinelAgent:
         
         try:
             while self.running:
-                cycle_start = datetime.utcnow()
+                cycle_start = datetime.now(timezone.utc)
                 
                 # Run one check cycle
                 self.run_once()
                 
                 # Calculate sleep time
-                cycle_duration = (datetime.utcnow() - cycle_start).total_seconds()
+                cycle_duration = (datetime.now(timezone.utc) - cycle_start).total_seconds()
                 sleep_time = max(0, self.config.check_interval - cycle_duration)
                 
                 if self.running and sleep_time > 0:
@@ -207,7 +227,7 @@ def main():
 Examples:
   python agent.py --once          Run a single check cycle
   python agent.py --continuous    Run continuously (default)
-  python agent.py --config /path/to/.env
+  python agent.py --config-dir /path/to/config
         """
     )
     

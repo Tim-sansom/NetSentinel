@@ -85,7 +85,6 @@ try {
         // Insert into appropriate finding table based on check type (Historical Events)
         switch ($check_name) {
             case 'system_info':
-                // Update device with system info
                 $hostname = $details['hostname'] ?? 'unknown';
                 $os_family = $details['os_family'] ?? 'unknown'; 
                 $os_version = $details['os_version'] ?? 'unknown';
@@ -99,7 +98,6 @@ try {
                     'id' => $device_id
                 ]);
                 
-                // Insert system finding (Historical)
                 $sysFindStmt = $pdo->prepare("INSERT INTO system_finding (check_run_id, hostname, os_name, os_version, 
                                              architecture, uptime_seconds) 
                                              VALUES (:check_run_id, :hostname, :os_name, :os_version, :arch, :uptime)");
@@ -209,15 +207,102 @@ try {
                 ]);
 
                 if (!($details['os_supported'] ?? true)) {
-                    $observed[] = ['finding_key' => 'patch:outdated_os', 'severity' => 'high',
-                                   'detail' => ['last_patch_date' => $details['last_patch_date'] ?? null]];
+                    $observed[] = ['finding_key' => 'patch:outdated_os', 'severity' => 'high', 'detail' => ['last_patch_date' => $details['last_patch_date'] ?? null]];
                 }
                 if ((int)($details['missing_critical_count'] ?? 0) > 0) {
-                    $observed[] = ['finding_key' => 'patch:pending_critical', 'severity' => 'high',
-                                   'detail' => ['count' => (int)$details['missing_critical_count']]];
+                    $observed[] = ['finding_key' => 'patch:pending_critical', 'severity' => 'high', 'detail' => ['count' => (int)$details['missing_critical_count']]];
                 }
                 if (!($details['auto_updates'] ?? false)) {
                     $observed[] = ['finding_key' => 'patch:auto_updates_off', 'severity' => 'medium', 'detail' => []];
+                }
+                break;
+
+            // --- NEW: Log Anomaly Check (Lightweight SIEM) ---
+            case 'log_check':
+                if (!empty($details['anomalies']) && is_array($details['anomalies'])) {
+                    $logStmt = $pdo->prepare("INSERT INTO log_finding (check_run_id, log_source, anomaly_type, event_count, severity, details) 
+                                              VALUES (:check_run_id, :source, :type, :count, :severity, :details)");
+                    
+                    foreach ($details['anomalies'] as $anomaly) {
+                        $logStmt->execute([
+                            'check_run_id' => $check_run_id,
+                            'source' => $anomaly['source'] ?? 'unknown',
+                            'type' => $anomaly['anomaly_type'] ?? 'unknown',
+                            'count' => (int)($anomaly['event_count'] ?? 0),
+                            'severity' => $anomaly['severity'] ?? 'info',
+                            'details' => json_encode($anomaly['details'] ?? [])
+                        ]);
+
+                        // Push high/critical log events to the stateful findings dashboard
+                        if (in_array(strtolower($anomaly['severity'] ?? ''), ['high', 'critical'])) {
+                            $observed[] = [
+                                'finding_key' => "log:{$anomaly['anomaly_type']}",
+                                'severity'    => strtolower($anomaly['severity']),
+                                'detail'      => $anomaly
+                            ];
+                        }
+                    }
+                }
+                break;
+
+            // --- NEW: Persistence Check (Malware/Backdoor detection) ---
+            case 'persistence_check':
+                if (!empty($details['findings']) && is_array($details['findings'])) {
+                    $logStmt = $pdo->prepare("INSERT INTO log_finding (check_run_id, log_source, anomaly_type, event_count, severity, details) 
+                                              VALUES (:check_run_id, :source, :type, :count, :severity, :details)");
+                    
+                    foreach ($details['findings'] as $finding) {
+                        $logStmt->execute([
+                            'check_run_id' => $check_run_id,
+                            'source' => 'Persistence Check',
+                            'type' => $finding['type'] ?? 'unknown_persistence',
+                            'count' => 1,
+                            'severity' => 'high',
+                            'details' => json_encode($finding)
+                        ]);
+                        
+                        // Push to stateful dashboard
+                        $observed[] = [
+                            'finding_key' => "persistence:{$finding['type']}",
+                            'severity'    => 'high',
+                            'detail'      => $finding
+                        ];
+                    }
+                }
+                break;
+
+            // --- NEW: Software Inventory & Server-Side CVE Matching ---
+            case 'software_inventory':
+                if (!empty($details['software']) && is_array($details['software'])) {
+                    // Prepare a query to find RCE/High-severity CVEs matching the product name
+                    // Note: Uses 'product' column to match the vulnerability_feed schema
+                    $vulnStmt = $pdo->prepare("SELECT cve_id, severity, title FROM vulnerability_feed 
+                                               WHERE product LIKE :product AND is_rce = 1");
+                    
+                    foreach ($details['software'] as $soft) {
+                        $productName = $soft['name'] ?? '';
+                        $version = $soft['version'] ?? '';
+                        
+                        if (empty($productName)) continue;
+
+                        // Simple LIKE match (e.g., 'OpenSSH' matches 'OpenSSH 8.2p1')
+                        $vulnStmt->execute(['product' => '%' . $productName . '%']);
+                        $matches = $vulnStmt->fetchAll(PDO::FETCH_ASSOC);
+                        
+                        foreach ($matches as $vuln) {
+                            // Push matched CVEs directly to the stateful findings dashboard
+                            $observed[] = [
+                                'finding_key' => "cve:{$vuln['cve_id']}",
+                                'severity'    => strtolower($vuln['severity']), // e.g., 'critical', 'high'
+                                'detail'      => [
+                                    'cve_id' => $vuln['cve_id'],
+                                    'product' => $productName,
+                                    'version' => $version,
+                                    'title' => $vuln['title']
+                                ]
+                            ];
+                        }
+                    }
                 }
                 break;
         }
@@ -259,5 +344,12 @@ try {
     error_log("NetSentinel API Processing Error: " . $e->getMessage());
     http_response_code(500);
     echo json_encode(["status" => "error", "message" => "Failed to process telemetry data"]);
+} catch (Exception $e) {
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    error_log("NetSentinel API General Error: " . $e->getMessage());
+    http_response_code(500);
+    echo json_encode(["status" => "error", "message" => "Internal server error"]);
 }
 ?>

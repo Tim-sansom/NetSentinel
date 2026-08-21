@@ -4,8 +4,8 @@ All security health checks inherit from this base class.
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Dict, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict
 
 
 @dataclass
@@ -16,7 +16,7 @@ class CheckResult:
     status: str  # 'pass', 'fail', 'warning', 'error'
     message: str
     severity: str = 'info'  # 'low', 'medium', 'high', 'critical'
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     details: Dict[str, Any] = field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:

@@ -1,4 +1,4 @@
-s"""
+"""
 Patch Level Check
 Reports patch/update posture: pending update counts, last patch activity,
 auto-update status and OS support status.
