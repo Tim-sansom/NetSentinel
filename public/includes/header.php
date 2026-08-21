@@ -9,7 +9,7 @@ $page_title = $page_title ?? 'Dashboard';
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="refresh" content="30">
+    <!-- REMOVED: <meta http-equiv="refresh" content="30"> -->
     <title><?= htmlspecialchars($page_title) ?> - NetSentinel</title>
     
     <!-- CSS -->
@@ -38,6 +38,9 @@ $page_title = $page_title ?? 'Dashboard';
                     <li class="nav-item"><a class="nav-link" href="dashboard.php">Overview</a></li>
                     <li class="nav-item"><a class="nav-link" href="devices.php">Devices</a></li>
                     <li class="nav-item"><a class="nav-link" href="alerts.php">Recent Alerts</a></li>
+                    <li class="nav-item"><a class="nav-link" href="discover.php">Discovery</a></li>
+                    <li class="nav-item"><a class="nav-link" href="networks.php">Networks</a></li>
+                    <li class="nav-item"><a class="nav-link" href="threats.php">Threats</a></li>
                 </ul>
             <?php endif; ?>
             

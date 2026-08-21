@@ -4,10 +4,12 @@ services:
     platform: linux/amd64
     container_name: netsentinel-dashboard
     ports:
-      - "8088:80"
-      - "8443:443"  # HTTPS for external agents
+     - "8088:80"
+     - "8443:443"  # HTTPS for external agents
     volumes:
       - ./public:/var/www/html:delegated
+      - ./scripts:/var/www/scripts:ro  # Scripts
+      - ./cronjobs:/var/www/cronjobs   # Cron jobs
       - ./certs:/etc/apache2/certs:ro  # SSL certificates
       - ./apache-config/netsentinel-ssl.conf:/etc/apache2/sites-enabled/netsentinel-ssl.conf:ro # SSL vhost config
     environment:
