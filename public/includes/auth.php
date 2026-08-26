@@ -5,6 +5,8 @@
  * Session-based login (for dashboard users).
  */
 
+require_once 'includes/audit.php'; // Ensure audit logging is available
+
 // ============================================
 // 1. SESSION-BASED AUTH (For Dashboard Pages)
 // ============================================
@@ -88,11 +90,12 @@ function authenticate_api_request(PDO $pdo): string {
         if (!$device) {
             // 3. Audit log the failed attempt (Fulfills SR4)
             try {
+                $ip_address = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
                 $logStmt = $pdo->prepare("
-                    INSERT INTO audit_log (event_type, detail, created_at) 
-                    VALUES ('agent_auth_fail', 'Invalid or revoked token presented', NOW())
+                    INSERT INTO audit_log (user_id, action, target_type, details, ip_address) 
+                    VALUES (NULL, 'AGENT_AUTH_FAIL', 'device', 'Invalid or revoked token presented', :ip)
                 ");
-                $logStmt->execute();
+                $logStmt->execute(['ip' => $ip_address]);
             } catch (Throwable $e) { 
                 // Non-fatal: don't break auth flow if audit log fails
             }
@@ -131,4 +134,31 @@ function validate_json_payload(): array {
     }
     
     return $data;
+}
+
+// ============================================
+// 3. CSRF PROTECTION (For Dashboard Forms)
+// ============================================
+
+/**
+ * Generates and returns a CSRF token for the current session.
+ */
+function csrf_token(): string {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+/**
+ * Verifies a submitted CSRF token against the session token.
+ */
+function verify_csrf(string $token): bool {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
 }

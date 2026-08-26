@@ -1,8 +1,11 @@
 """
-Firewall Check
-Checks if the host firewall is active.
-Fulfills FR2 and NFR2 (Cross-platform).
+Firewall Check - Cross-Platform Status Verification
+
+Determines if the host's native firewall is active.
+Fulfills FR2 (Firewall status) and NFR2 (Cross-platform support).
+Uses native OS commands that do not require elevated (admin/root) privileges.
 """
+
 import platform
 import subprocess
 import logging
@@ -10,9 +13,15 @@ from .base_check import BaseCheck, CheckResult
 
 
 class FirewallCheck(BaseCheck):
-    """Checks the status of the host firewall on Windows, Linux, or macOS."""
+    """
+    Checks the status of the host firewall on Windows, Linux, or macOS.
+    
+    Returns a simple boolean state (active/inactive) to keep the payload 
+    lightweight, while capturing raw output for debugging if needed.
+    """
 
     def __init__(self):
+        """Initialize the FirewallCheck with standard BaseCheck metadata."""
         super().__init__(
             name="firewall_check",
             description="Checks if the host firewall is active."
@@ -21,7 +30,7 @@ class FirewallCheck(BaseCheck):
 
     def check(self) -> CheckResult:
         """
-        Perform the firewall check.
+        Perform the firewall check based on the host OS.
         
         Returns:
             CheckResult indicating if the firewall is active or inactive.
@@ -33,7 +42,7 @@ class FirewallCheck(BaseCheck):
                 is_active, details = self._check_windows_firewall()
             elif os_name == "linux":
                 is_active, details = self._check_linux_firewall()
-            elif os_name == "darwin": # macOS
+            elif os_name == "darwin":  # macOS
                 is_active, details = self._check_macos_firewall()
             else:
                 return CheckResult(
@@ -60,7 +69,6 @@ class FirewallCheck(BaseCheck):
                 severity=severity,
                 details=details
             )
-
         except Exception as e:
             self.logger.error(f"Failed to perform firewall check: {str(e)}")
             return CheckResult(
@@ -71,26 +79,35 @@ class FirewallCheck(BaseCheck):
                 details={"exception": str(e)}
             )
 
-    def _check_windows_firewall(self) -> tuple[bool, dict]:
-        """Check Windows Defender Firewall status using netsh (no admin required)."""
+    def _check_windows_firewall(self) -> tuple:
+        """
+        Check Windows Defender Firewall status using netsh.
+        
+        Note: netsh can be run without admin privileges to read the state.
+        For MVP, we consider the firewall 'active' if any profile is ON.
+        """
         try:
-            # netsh advfirewall show allprofiles state
             result = subprocess.run(
                 ["netsh", "advfirewall", "show", "allprofiles", "state"],
-                capture_output=True, text=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW
+                capture_output=True, text=True, timeout=10, 
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
-            
             output = result.stdout.lower()
-            # If all profiles are OFF, it's inactive. If any are ON, we consider it active for MVP.
+            
+            # Check if any profile is enabled
             is_active = "state                                 on" in output or "state on" in output.replace(" ", "")
             
             return is_active, {"os": "windows", "raw_output": output.strip()[:200]}
-            
         except Exception as e:
             return False, {"os": "windows", "error": str(e)}
 
-    def _check_linux_firewall(self) -> tuple[bool, dict]:
-        """Check Linux firewall status (ufw or firewalld) without sudo."""
+    def _check_linux_firewall(self) -> tuple:
+        """
+        Check Linux firewall status (ufw or firewalld).
+        
+        Checks systemctl status without requiring sudo. Covers both 
+        Debian/Ubuntu (ufw) and RHEL/CentOS/Fedora (firewalld) families.
+        """
         try:
             # Try UFW first (standard on Ubuntu)
             result = subprocess.run(
@@ -109,24 +126,24 @@ class FirewallCheck(BaseCheck):
                 return True, {"os": "linux", "firewall": "firewalld", "status": "active"}
                 
             return False, {"os": "linux", "firewall": "none_detected", "status": "inactive"}
-            
         except Exception as e:
             return False, {"os": "linux", "error": str(e)}
 
-    def _check_macos_firewall(self) -> tuple[bool, dict]:
-        """Check macOS Application Firewall status using defaults (no sudo required)."""
+    def _check_macos_firewall(self) -> tuple:
+        """
+        Check macOS Application Firewall (ALF) status.
+        
+        Reads the global state from the preferences plist.
+        0 = Off, 1 = On, 2 = On (Stealth mode enabled).
+        """
         try:
-            # Read the global state of the Application Firewall
-            # 0 = Off, 1 = On, 2 = On (Stealth mode)
             result = subprocess.run(
                 ["defaults", "read", "/Library/Preferences/com.apple.alf", "globalstate"],
                 capture_output=True, text=True, timeout=10
             )
-            
             state = result.stdout.strip()
             is_active = state in ["1", "2"]
             
             return is_active, {"os": "macos", "globalstate": state}
-            
         except Exception as e:
             return False, {"os": "macos", "error": str(e)}

@@ -1,8 +1,13 @@
 """
-System Information Check
+System Information Check - Asset Metadata Collection
+
 Collects OS metadata, version, architecture, and uptime.
-Fulfills FR1.
+Fulfills FR1 (System/OS metadata). 
+
+Provides the foundational asset data required for the dashboard to 
+categorize and filter endpoints by operating system and health status.
 """
+
 import platform
 import psutil
 import logging
@@ -11,19 +16,30 @@ from .base_check import BaseCheck, CheckResult
 
 
 class SystemInfoCheck(BaseCheck):
-    """Collects basic system and OS metadata."""
+    """
+    Collects basic system and OS metadata.
+    
+    Normalizes OS naming conventions across Windows, Linux, and macOS 
+    to ensure consistent data storage in the MySQL backend.
+    """
 
     def __init__(self):
+        """Initialize the SystemInfoCheck with standard BaseCheck metadata."""
         super().__init__(
             name="system_info",
             description="Collects OS metadata, version, architecture, and uptime."
         )
         self.logger = logging.getLogger("netsentinel.checks.system_info")
 
-    def _normalize_os_info(self):
+    def _normalize_os_info(self) -> tuple:
         """
         Normalizes OS data across Windows, Linux, and macOS.
-        Returns a tuple of (os_family, os_version).
+        
+        Handles the significant differences in how each OS reports 
+        its version and edition (e.g., distinguishing Windows Server from Windows 10).
+        
+        Returns:
+            A tuple of (os_family, os_version).
         """
         os_system = platform.system()
         
@@ -37,8 +53,7 @@ class SystemInfoCheck(BaseCheck):
         elif os_system == 'Windows':
             os_family = 'Windows'
             os_version = platform.release() # e.g., '10' or '11'
-            
-            # Detect Windows Server specifically
+            # Detect Windows Server specifically to separate it from workstations
             try:
                 edition = platform.win32_edition()
                 if edition and 'Server' in str(edition):
@@ -58,16 +73,19 @@ class SystemInfoCheck(BaseCheck):
             except (AttributeError, OSError):
                 # Fallback to kernel version if os-release fails
                 os_version = platform.release()
-                
         else:
             os_family = os_system
             os_version = platform.release()
-
+            
         return os_family, os_version
 
     def check(self) -> CheckResult:
         """
         Perform the system info check.
+        
+        Returns:
+            CheckResult containing hostname, OS family/version, architecture, 
+            and formatted uptime string.
         """
         try:
             # Get normalized OS data
@@ -77,18 +95,18 @@ class SystemInfoCheck(BaseCheck):
             architecture = platform.machine()     # e.g., 'x86_64', 'AMD64', 'arm64'
             hostname = platform.node()            # Computer name
             python_version = platform.python_version() 
-
+            
             # Calculate system uptime using 'psutil'
             boot_time_timestamp = psutil.boot_time()
             boot_time = datetime.fromtimestamp(boot_time_timestamp)
             uptime_delta = datetime.now() - boot_time
             
-            # Format uptime into a readable string
+            # Format uptime into a human-readable string (e.g., "12d 4h 30m")
             days = uptime_delta.days
             hours, remainder = divmod(uptime_delta.seconds, 3600)
             minutes, _ = divmod(remainder, 60)
             uptime_str = f"{days}d {hours}h {minutes}m"
-
+            
             # Compile all details for the API payload
             details = {
                 "hostname": hostname,
@@ -100,9 +118,8 @@ class SystemInfoCheck(BaseCheck):
                 "agent_python_version": python_version,
                 "last_boot_time": boot_time.isoformat()
             }
-
+            
             self.logger.info(f"System info collected: {os_family} {os_version} ({hostname})")
-
             return CheckResult(
                 check_name=self.name,
                 status="pass",
@@ -110,7 +127,6 @@ class SystemInfoCheck(BaseCheck):
                 severity="info",
                 details=details
             )
-
         except Exception as e:
             self.logger.error(f"Failed to collect system info: {str(e)}")
             return CheckResult(

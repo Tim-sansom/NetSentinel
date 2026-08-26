@@ -1,0 +1,27 @@
+/* --- Force Solid Block Colors for Badges --- */
+.badge {
+    opacity: 1 !important;
+    border: none !important;
+    font-weight: 600 !important;
+}
+
+.badge.bg-danger { 
+    background-color: #dc3545 !important; /* Solid Red */
+    color: #ffffff !important; 
+}
+.badge.bg-warning { 
+    background-color: #ffc107 !important; /* Solid Yellow */
+    color: #000000 !important; /* Black text for readability on yellow */
+}
+.badge.bg-info { 
+    background-color: #0dcaf0 !important; /* Solid Cyan/Blue */
+    color: #000000 !important; /* Black text for readability on light blue */
+}
+.badge.bg-secondary { 
+    background-color: #6c757d !important; /* Solid Grey */
+    color: #ffffff !important; 
+}
+.badge.bg-primary { 
+    background-color: #0d6efd !important; /* Solid Blue */
+    color: #ffffff !important; 
+}

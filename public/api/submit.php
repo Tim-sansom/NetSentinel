@@ -52,7 +52,7 @@ try {
             'os_family' => 'unknown',
             'os_version' => 'unknown'
         ]);
-        $device_id = $pdo->lastInsertId();
+        $device_id = (int) $pdo->lastInsertId();
     }
 
     // 5. Insert the Check Run record
@@ -62,7 +62,7 @@ try {
         'device_id' => $device_id,
         'timestamp' => $payload['timestamp'] ?? date('Y-m-d H:i:s')
     ]);
-    $check_run_id = $pdo->lastInsertId();
+    $check_run_id = (int) $pdo->lastInsertId();
 
     // 6. Process each check result from the agent
     $overall_health = 'healthy'; // Default to healthy
@@ -217,7 +217,6 @@ try {
                 }
                 break;
 
-            // --- NEW: Log Anomaly Check (Lightweight SIEM) ---
             case 'log_check':
                 if (!empty($details['anomalies']) && is_array($details['anomalies'])) {
                     $logStmt = $pdo->prepare("INSERT INTO log_finding (check_run_id, log_source, anomaly_type, event_count, severity, details) 
@@ -233,7 +232,6 @@ try {
                             'details' => json_encode($anomaly['details'] ?? [])
                         ]);
 
-                        // Push high/critical log events to the stateful findings dashboard
                         if (in_array(strtolower($anomaly['severity'] ?? ''), ['high', 'critical'])) {
                             $observed[] = [
                                 'finding_key' => "log:{$anomaly['anomaly_type']}",
@@ -245,7 +243,6 @@ try {
                 }
                 break;
 
-            // --- NEW: Persistence Check (Malware/Backdoor detection) ---
             case 'persistence_check':
                 if (!empty($details['findings']) && is_array($details['findings'])) {
                     $logStmt = $pdo->prepare("INSERT INTO log_finding (check_run_id, log_source, anomaly_type, event_count, severity, details) 
@@ -261,7 +258,6 @@ try {
                             'details' => json_encode($finding)
                         ]);
                         
-                        // Push to stateful dashboard
                         $observed[] = [
                             'finding_key' => "persistence:{$finding['type']}",
                             'severity'    => 'high',
@@ -271,11 +267,8 @@ try {
                 }
                 break;
 
-            // --- NEW: Software Inventory & Server-Side CVE Matching ---
             case 'software_inventory':
                 if (!empty($details['software']) && is_array($details['software'])) {
-                    // Prepare a query to find RCE/High-severity CVEs matching the product name
-                    // Note: Uses 'product' column to match the vulnerability_feed schema
                     $vulnStmt = $pdo->prepare("SELECT cve_id, severity, title FROM vulnerability_feed 
                                                WHERE product LIKE :product AND is_rce = 1");
                     
@@ -285,15 +278,13 @@ try {
                         
                         if (empty($productName)) continue;
 
-                        // Simple LIKE match (e.g., 'OpenSSH' matches 'OpenSSH 8.2p1')
                         $vulnStmt->execute(['product' => '%' . $productName . '%']);
                         $matches = $vulnStmt->fetchAll(PDO::FETCH_ASSOC);
                         
                         foreach ($matches as $vuln) {
-                            // Push matched CVEs directly to the stateful findings dashboard
                             $observed[] = [
                                 'finding_key' => "cve:{$vuln['cve_id']}",
-                                'severity'    => strtolower($vuln['severity']), // e.g., 'critical', 'high'
+                                'severity'    => strtolower($vuln['severity']),
                                 'detail'      => [
                                     'cve_id' => $vuln['cve_id'],
                                     'product' => $productName,
@@ -305,12 +296,21 @@ try {
                     }
                 }
                 break;
-        }
-    }
+        } // End of switch
+    } // End of foreach loop
+
+    // ==========================================================
+    // --- CORRECT PLACEMENT: Run these ONCE per check run ---
+    // ==========================================================
     
-    // Process the unified finding state (Upsert open, auto-resolve stale)
-    record_findings($pdo, (int)$device_id, $observed, 15); 
+    // 1. Process the unified finding state (Upsert open, auto-resolve stale)
+    record_findings($pdo, $device_id, $observed, 15); 
     
+    // 2. Trigger Policy Engine to check for baseline violations
+    require_once __DIR__ . '/../includes/policy_engine.php';
+    evaluate_device_policy($pdo, $device_id, $check_run_id, $payload['checks']);
+    // ==========================================================
+
     // Update check_run with final overall status
     $updateRunStmt = $pdo->prepare("UPDATE check_run SET overall_status = :status WHERE check_run_id = :id");
     $updateRunStmt->execute([
@@ -333,7 +333,7 @@ try {
     echo json_encode([
         "status" => "success", 
         "message" => "Telemetry received and stored successfully",
-        "check_run_id" => (int)$check_run_id,
+        "check_run_id" => $check_run_id,
         "device_uuid" => $payload['device_uuid']
     ]);
 

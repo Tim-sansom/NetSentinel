@@ -10,7 +10,6 @@ require_once 'includes/header.php';
 
 try {
     // 1. Fetch Summary Counts for the top cards
-    // Only count from port_finding which has 'severity' column
     $stmt = $pdo->query("
         SELECT 
             SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) as critical_count,
@@ -21,8 +20,6 @@ try {
     $counts = $stmt->fetch(PDO::FETCH_ASSOC);
 
     // 2. Fetch the main alerts feed
-    // ONLY include port_finding and firewall_finding. 
-    // system_finding is removed because it stores metadata (OS info), not security alerts.
     $stmt = $pdo->query("
         SELECT 
             c.run_timestamp,
@@ -72,43 +69,48 @@ try {
     <div class="alert alert-danger"><?= $error ?></div>
 <?php endif; ?>
 
-<!-- Summary Cards -->
+<!-- Summary Cards (SOLID COLORS) -->
 <div class="row mb-4">
+    <!-- Critical Card: Solid Red Background -->
     <div class="col-md-4">
-        <div class="card border-danger border-start border-4 shadow-sm">
+        <div class="card bg-danger text-white shadow-sm">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
-                        <h6 class="text-muted mb-1">Critical Alerts</h6>
-                        <h3 class="mb-0 text-danger"><?= $counts['critical_count'] ?? 0 ?></h3>
+                        <h6 class="text-white-50 mb-1">Critical Alerts</h6>
+                        <h3 class="mb-0 fw-bold"><?= $counts['critical_count'] ?? 0 ?></h3>
                     </div>
-                    <div class="display-6 text-danger opacity-50">🔥</div>
+                    <div class="display-6 text-white opacity-50">🔥</div>
                 </div>
             </div>
         </div>
     </div>
+    
+    <!-- High Severity Card: Solid Yellow Background (Dark text for readability) -->
     <div class="col-md-4">
-        <div class="card border-warning border-start border-4 shadow-sm">
+        <div class="card bg-warning text-dark shadow-sm">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
-                        <h6 class="text-muted mb-1">High Severity</h6>
-                        <h3 class="mb-0 text-warning"><?= $counts['high_count'] ?? 0 ?></h3>
+                        <h6 class="text-dark opacity-75 mb-1">High Severity</h6>
+                        <h3 class="mb-0 fw-bold"><?= $counts['high_count'] ?? 0 ?></h3>
                     </div>
-                    <div class="display-6 text-warning opacity-50">⚠️</div>
+                    <div class="display-6 text-dark opacity-50">⚠️</div>
                 </div>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card border-info border-start border-4 shadow-sm">
+    
+    <!-- Medium/Info Card: Solid Cyan Background (Dark text for readability) -->
+     <div class="col-md-4">
+        <div class="card bg-dark text-white shadow-sm">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
-                        <h6 class="text-muted mb-1">Medium / Info</h6>
-                        <h3 class="mb-0 text-info"><?= $counts['medium_count'] ?? 0 ?></h3>
+                        <h6 class="text-white-50 mb-1">Medium / Info</h6>
+                        <h3 class="mb-0 fw-bold"><?= $counts['medium_count'] ?? 0 ?></h3>
                     </div>
-                    <div class="display-6 text-info opacity-50">ℹ️</div>
+                    <div class="display-6 text-white opacity-50">ℹ️</div>
                 </div>
             </div>
         </div>
@@ -140,12 +142,17 @@ try {
                     <tbody>
                         <?php foreach ($alerts as $alert): 
                             $sev = strtolower($alert['severity'] ?? 'info');
-                            $badge = match($sev) {
-                                'critical' => 'bg-danger',
-                                'high' => 'bg-warning text-dark',
-                                'medium' => 'bg-info text-dark',
-                                default => 'bg-secondary'
-                            };
+                            
+                            // Set colors based on severity for table badges
+                            if ($sev === 'critical') {
+                                $bg_color = '#dc3545'; $text_color = '#ffffff';
+                            } elseif ($sev === 'high') {
+                                $bg_color = '#ffc107'; $text_color = '#000000';
+                            } elseif ($sev === 'medium') {
+                                $bg_color = '#0dcaf0'; $text_color = '#000000';
+                            } else {
+                                $bg_color = '#6c757d'; $text_color = '#ffffff';
+                            }
                         ?>
                             <tr>
                                 <td class="text-nowrap"><?= date('d M Y, H:i', strtotime($alert['run_timestamp'])) ?></td>
@@ -154,15 +161,23 @@ try {
                                         <?= htmlspecialchars($alert['hostname']) ?>
                                     </a>
                                 </td>
-                                <td><span class="badge bg-secondary"><?= htmlspecialchars($alert['finding_type']) ?></span></td>
+                                <td>
+                                    <span class="badge" style="display: inline-block; background-color: #6c757d; color: #ffffff; padding: 0.4em 0.65em; font-size: 0.85em; font-weight: 600; border-radius: 0.25rem;">
+                                        <?= htmlspecialchars($alert['finding_type']) ?>
+                                    </span>
+                                </td>
                                 <td>
                                     <?= htmlspecialchars($alert['detail']) ?>
                                     <?php if ($alert['finding_type'] === 'Port' && $alert['is_expected'] == 0): ?>
-                                        <span class="badge bg-danger ms-1">Unexpected</span>
+                                        <span class="badge" style="display: inline-block; background-color: #dc3545; color: #ffffff; padding: 0.3em 0.5em; font-size: 0.75em; font-weight: 600; border-radius: 0.25rem; margin-left: 8px;">
+                                            Unexpected
+                                        </span>
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <span class="badge <?= $badge ?>"><?= ucfirst(htmlspecialchars($alert['severity'] ?? 'Info')) ?></span>
+                                    <span class="badge" style="display: inline-block; background-color: <?= $bg_color ?>; color: <?= $text_color ?>; padding: 0.4em 0.65em; font-size: 0.85em; font-weight: 600; border-radius: 0.25rem;">
+                                        <?= ucfirst(htmlspecialchars($alert['severity'] ?? 'Info')) ?>
+                                    </span>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -182,7 +197,7 @@ try {
             "ordering": true,
             "info": true,
             "pageLength": 25,
-            "order": [[ 0, "desc" ]], // Default sort by Timestamp descending
+            "order": [[ 0, "desc" ]],
             "language": {
                 "search": "Filter alerts:"
             }
