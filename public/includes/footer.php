@@ -1,4 +1,4 @@
-</main> <!-- This closes the <main> tag opened in header.php -->
+</main> <!-- Closes the <main> tag opened in header.php -->
 
 <footer class="bg-dark text-light text-center py-3 mt-5 border-top border-secondary">
     <div class="container">
@@ -6,7 +6,8 @@
     </div>
 </footer>
 
-<!-- No duplicate JS scripts needed here since they are already in the <head> -->
-
+<!-- PERFORMANCE NOTE (NFR1): No duplicate JS scripts are loaded here. 
+     All libraries (Bootstrap, jQuery, DataTables) are loaded in the <head> 
+     to prevent redundant network requests and ensure page-level inline scripts work. -->
 </body>
 </html>

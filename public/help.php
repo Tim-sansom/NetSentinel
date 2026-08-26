@@ -1,4 +1,10 @@
 <?php
+/**
+ * NetSentinel Help & Support Page
+ * 
+ * Provides user-friendly guides, troubleshooting FAQ, and 
+ * system health status. Accessible to all logged-in users.
+ */
 // STEP 1: Start session IMMEDIATELY
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -8,134 +14,217 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/auth.php';
 
-// STEP 3: Check authentication (Accessible to all logged-in users)
+// STEP 3: Check authentication (Accessible to all logged-in users, Admin and Viewer)
 if (!isset($_SESSION['user_id'])) {
     header('Location: login.php');
     exit;
 }
 
-$page_title = 'Help & System Status';
+$page_title = 'Help & Support';
 require_once __DIR__ . '/includes/header.php';
 
-// --- System Status Checks ---
-$db_status = 'Disconnected';
-$db_color = 'danger';
+// --- Simple System Status Checks (For Admins only) ---
+$db_status = 'Connected';
+$db_color = 'success';
 try {
     $pdo->query("SELECT 1");
-    $db_status = 'Connected';
-    $db_color = 'success';
 } catch (PDOException $e) {
-    $db_status = 'Error';
+    $db_status = 'Disconnected';
+    $db_color = 'danger';
 }
 
-$api_status = file_exists(__DIR__ . '/api/submit.php') ? 'Operational' : 'Missing';
-$api_color = file_exists(__DIR__ . '/api/submit.php') ? 'success' : 'danger';
+// RBAC: Determine if user is admin to show/hide system health widget
+$is_admin = isset($_SESSION['role']) && strtolower($_SESSION['role']) === 'admin';
 ?>
 
 <div class="container-fluid mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2><i class="bi bi-question-circle"></i> Help & System Status</h2>
-    </div>
-
-    <!-- 1. System Status Dashboard -->
     <div class="row mb-4">
-        <div class="col-md-6">
-            <div class="card shadow-sm h-100">
-                <div class="card-header bg-white"><h5 class="mb-0">System Health</h5></div>
+        <div class="col-12">
+            <h2><i class="bi bi-question-circle"></i> Help & Support</h2>
+            <p class="text-muted">Welcome to NetSentinel. Find step-by-step guides, troubleshooting tips, and system status below.</p>
+        </div>
+    </div>
+
+    <!-- 1. Quick Start Guide (For Non-Tech Users) -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="bi bi-book"></i> How-To Guides</h5>
+                </div>
                 <div class="card-body">
-                    <ul class="list-group list-group-flush">
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            Database (MySQL)
-                            <span class="badge bg-<?= $db_color ?>"><?= $db_status ?></span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            Agent API (submit.php)
-                            <span class="badge bg-<?= $api_color ?>"><?= $api_status ?></span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            PHP Version
-                            <span class="badge bg-dark"><?= phpversion() ?></span>
-                        </li>
-                    </ul>
+                    <div class="accordion" id="howToAccordion">
+                        <!-- Guide 1: Understanding the Dashboard -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingOne">
+                                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne">
+                                    <strong>1. Understanding the Dashboard Colors</strong>
+                                </button>
+                            </h2>
+                            <div id="collapseOne" class="accordion-collapse collapse show" data-bs-parent="#howToAccordion">
+                                <div class="accordion-body">
+                                    <p>NetSentinel uses a simple "Traffic Light" system to show you the health of your devices:</p>
+                                    <ul>
+                                        <li><span style="background-color: #dc3545; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold;">Red (Critical/High)</span>: Immediate action required. Examples: Firewall is turned off, or dangerous ports (like Remote Desktop) are open to the internet.</li>
+                                        <li><span style="background-color: #ffc107; color: black; padding: 2px 8px; border-radius: 4px; font-weight: bold;">Yellow (Medium)</span>: Needs attention soon. Examples: Missing non-critical updates, or unexpected software running.</li>
+                                        <li><span style="background-color: #212529; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold;">Black (Low/Info)</span>: All clear. Standard system information and routine checks.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Guide 2: Adding a New Device -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingTwo">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo">
+                                    <strong>2. How to Add a New Computer (Deploy Agent)</strong>
+                                </button>
+                            </h2>
+                            <div id="collapseTwo" class="accordion-collapse collapse" data-bs-parent="#howToAccordion">
+                                <div class="accordion-body">
+                                    <p>To start monitoring a new Windows, Mac, or Linux computer:</p>
+                                    <ol>
+                                        <li>Click <strong>Discovery</strong> in the top menu.</li>
+                                        <li>Click <strong>Run Scan</strong>. The system will search your local network for active devices.</li>
+                                        <li>Find the computer you want to monitor in the list and click <strong>Deploy Agent</strong>.</li>
+                                        <li>Download the generated <code>config.env</code> file.</li>
+                                        <li>On the target computer, place the <code>config.env</code> file in the same folder as the NetSentinel Python Agent.</li>
+                                        <li>Run the agent. It will automatically connect and appear on your <strong>Devices</strong> page within 5 minutes.</li>
+                                    </ol>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Guide 3: Creating a Security Rule -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingThree">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree">
+                                    <strong>3. How to Create a Security Policy (Admins Only)</strong>
+                                </button>
+                            </h2>
+                            <div id="collapseThree" class="accordion-collapse collapse" data-bs-parent="#howToAccordion">
+                                <div class="accordion-body">
+                                    <p>Policies allow you to enforce rules across your company. For example, "No one in Finance should have Remote Desktop open."</p>
+                                    <ol>
+                                        <li>Go to <strong>Policy Management</strong>.</li>
+                                        <li>Under <strong>Device Groups</strong>, create a group (e.g., "Finance Team") and assign the relevant computers to it.</li>
+                                        <li>Go to the <strong>Baseline Rules</strong> tab and click <strong>New Rule</strong>.</li>
+                                        <li>Set the <strong>Check Type</strong> (e.g., Port Check), the <strong>Target</strong> (e.g., 3389 for Remote Desktop), and the <strong>Expected State</strong> (e.g., Closed).</li>
+                                        <li>Save the rule. If any computer in that group breaks this rule, a <strong>Red Alert</strong> will instantly appear on the dashboard.</li>
+                                    </ol>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Guide 4: Exporting Reports -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingFour">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFour">
+                                    <strong>4. How to Export a Compliance Report</strong>
+                                </button>
+                            </h2>
+                            <div id="collapseFour" class="accordion-collapse collapse" data-bs-parent="#howToAccordion">
+                                <div class="accordion-body">
+                                    <p>Need to send a report to management or an auditor?</p>
+                                    <ol>
+                                        <li>Navigate to the page containing the data you need (e.g., <strong>Devices</strong>, <strong>Recent Alerts</strong>, or <strong>Audit Logs</strong>).</li>
+                                        <li>Look for the green <strong>Export CSV</strong> button in the top right corner.</li>
+                                        <li>Click it to instantly download an Excel-compatible spreadsheet of your current data.</li>
+                                    </ol>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- 2. Quick Actions -->
-        <div class="col-md-6">
+        <!-- 2. Troubleshooting / FAQ (Crucial for non-tech users) -->
+        <div class="col-md-4">
             <div class="card shadow-sm h-100">
-                <div class="card-header bg-white"><h5 class="mb-0">Quick Actions</h5></div>
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="bi bi-tools"></i> Troubleshooting & FAQ</h5>
+                </div>
                 <div class="card-body">
-                    <a href="admin_users.php" class="btn btn-outline-primary w-100 mb-2"><i class="bi bi-people"></i> Manage Users & Roles</a>
-                    <a href="admin_groups.php" class="btn btn-outline-primary w-100 mb-2"><i class="bi bi-shield-check"></i> Configure Policy Rules</a>
-                    <a href="audit_logs.php" class="btn btn-outline-primary w-100 mb-2"><i class="bi bi-journal-text"></i> View Audit Logs</a>
-                    <a href="export.php?type=devices" class="btn btn-outline-success w-100"><i class="bi bi-download"></i> Export Device Report (CSV)</a>
+                    <div class="accordion accordion-flush" id="faqAccordion">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="faqOne">
+                                <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapseOne">
+                                    <small>My device isn't showing up after deployment.</small>
+                                </button>
+                            </h2>
+                            <div id="faqCollapseOne" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                                <div class="accordion-body small">
+                                    <ul class="mb-0">
+                                        <li>Ensure the Python Agent is actually running on the device.</li>
+                                        <li>Check that the <code>config.env</code> file is in the same folder as the agent.</li>
+                                        <li>Wait up to 5 minutes. The agent reports on a schedule, not instantly.</li>
+                                        <li>Check the <code>agent.log</code> file on the device for "Connection Refused" errors.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="faqTwo">
+                                <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapseTwo">
+                                    <small>I lost my 2FA code / can't log in.</small>
+                                </button>
+                            </h2>
+                            <div id="faqCollapseTwo" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                                <div class="accordion-body small">
+                                    <p class="mb-1">If you are locked out of your authenticator app:</p>
+                                    <p class="mb-0">Contact your System Administrator. They can temporarily disable 2FA on your account from the <strong>User Management</strong> page so you can log back in and re-scan your QR code.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="faqThree">
+                                <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#faqCollapseThree">
+                                    <small>What does "Unknown User" mean in Audit Logs?</small>
+                                </button>
+                            </h2>
+                            <div id="faqCollapseThree" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                                <div class="accordion-body small">
+                                    <!-- GDPR COMPLIANCE EXPLANATION -->
+                                    <p class="mb-0">This is a security and privacy feature. If an employee leaves the company and their user account is deleted, their name is removed from the system to comply with GDPR Right to Erasure. However, the <em>actions</em> they took (like changing a password) are kept for security auditing, labeled as "Unknown User".</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- 3. User Guide (Accordion) -->
-    <div class="card shadow-sm">
-        <div class="card-header bg-white"><h5 class="mb-0">NetSentinel User Guide</h5></div>
-        <div class="card-body">
-            <div class="accordion" id="userGuideAccordion">
-                
-                <div class="accordion-item">
-                    <h2 class="accordion-header" id="headingOne">
-                        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne">
-                            <strong>1. Dashboard & Device Monitoring</strong>
-                        </button>
-                    </h2>
-                    <div id="collapseOne" class="accordion-collapse collapse show" data-bs-parent="#userGuideAccordion">
-                        <div class="accordion-body">
-                            The <strong>Overview</strong> page provides a high-level summary of your network health. Use the <strong>Devices</strong> page to view detailed telemetry for each endpoint. The color-coded badges indicate severity: <span style="background-color: #dc3545; color: white; padding: 2px 6px; border-radius: 4px;">Red</span> for Critical, <span style="background-color: #ffc107; color: black; padding: 2px 6px; border-radius: 4px;">Yellow</span> for High, and <span style="background-color: #212529; color: white; padding: 2px 6px; border-radius: 4px;">Black</span> for Info.
+    <!-- 3. System Health (Only visible to Admins, kept simple) -->
+    <?php if ($is_admin): ?>
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm border-0 bg-light">
+                <div class="card-body">
+                    <h6 class="text-muted mb-3"><i class="bi bi-activity"></i> System Health (Admin View)</h6>
+                    <div class="d-flex gap-4">
+                        <div>
+                            <span class="small text-muted">Database:</span>
+                            <span class="badge bg-<?= $db_color ?> ms-1"><?= $db_status ?></span>
+                        </div>
+                        <div>
+                            <span class="small text-muted">Agent API:</span>
+                            <span class="badge bg-success ms-1">Operational</span>
+                        </div>
+                        <div>
+                            <span class="small text-muted">Threat Feed:</span>
+                            <span class="badge bg-success ms-1">Updated</span>
                         </div>
                     </div>
                 </div>
-
-                <div class="accordion-item">
-                    <h2 class="accordion-header" id="headingTwo">
-                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo">
-                            <strong>2. Deploying the Python Agent</strong>
-                        </button>
-                    </h2>
-                    <div id="collapseTwo" class="accordion-collapse collapse" data-bs-parent="#userGuideAccordion">
-                        <div class="accordion-body">
-                            To monitor a new device, navigate to the <strong>Discovery</strong> page and run a network scan. Once a device is identified, click "Deploy Agent". This will generate a unique <code>device_uuid</code> and a secure <code>api_token</code>. Download the configuration file and place it in the same directory as the Python agent on the target endpoint.
-                        </div>
-                    </div>
-                </div>
-
-                <div class="accordion-item">
-                    <h2 class="accordion-header" id="headingThree">
-                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree">
-                            <strong>3. Policy Management & Alerts</strong>
-                        </button>
-                    </h2>
-                    <div id="collapseThree" class="accordion-collapse collapse" data-bs-parent="#userGuideAccordion">
-                        <div class="accordion-body">
-                            Use the <strong>Policy Management</strong> tab to create Device Groups (e.g., "Remote Workers") and assign Baseline Rules (e.g., "Port 3389 must be closed"). If an agent reports a state that violates a rule, a <strong>Policy Violation</strong> is logged and appears on the <strong>Recent Alerts</strong> page.
-                        </div>
-                    </div>
-                </div>
-
-                <div class="accordion-item">
-                    <h2 class="accordion-header" id="headingFour">
-                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFour">
-                            <strong>4. Security & Audit Logs</strong>
-                        </button>
-                    </h2>
-                    <div id="collapseFour" class="accordion-collapse collapse" data-bs-parent="#userGuideAccordion">
-                        <div class="accordion-body">
-                            All administrative actions are recorded in the <strong>Audit Log</strong>. If a user is deleted (GDPR Right to Erasure), their name is replaced with "Unknown User" in the logs, but the action record is preserved for security auditing.
-                        </div>
-                    </div>
-                </div>
-
             </div>
         </div>
     </div>
+    <?php endif; ?>
+
 </div>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

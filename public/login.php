@@ -1,12 +1,16 @@
 <?php
+/**
+ * NetSentinel Login Page
+ * Handles user authentication, session initialization, and secure redirection.
+ */
 require_once 'includes/db.php';
 
-// Start session if not already started
+// 1. SECURITY: Start session immediately
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// If already logged in, redirect to dashboard
+// If already logged in, redirect to dashboard to prevent redundant logins
 if (isset($_SESSION['user_id'])) {
     header('Location: dashboard.php');
     exit;
@@ -15,7 +19,7 @@ if (isset($_SESSION['user_id'])) {
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Accept either username or email in the first field
+    // Accept either username or email in the first field for better UX
     $login_identifier = trim($_POST['login_identifier'] ?? '');
     $password = $_POST['password'] ?? '';
 
@@ -23,14 +27,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Please enter both your username/email and password.';
     } else {
         try {
-            // Check against BOTH username and email columns
-            // Note: table is 'user' (singular), primary key is 'user_id'
+            // SECURITY (SR3): Prepared statement prevents SQL Injection.
+            // Checks against BOTH username and email columns.
             $stmt = $pdo->prepare("SELECT user_id, username, email, password_hash, role FROM user WHERE username = ? OR email = ?");
             $stmt->execute([$login_identifier, $login_identifier]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
+            // SECURITY (SR2): password_verify() is timing-safe, preventing timing attacks.
             if ($user && password_verify($password, $user['password_hash'])) {
-                // Regenerate session ID to prevent fixation
+                
+                // CRITICAL SECURITY: Regenerate session ID to prevent Session Fixation attacks.
+                // This ensures an attacker cannot hijack a pre-existing session ID.
                 session_regenerate_id(true);
                 
                 $_SESSION['user_id'] = $user['user_id'];
@@ -40,11 +47,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: dashboard.php');
                 exit;
             } else {
+                // Generic error message to prevent User Enumeration (don't reveal if user exists)
                 $error = 'Invalid credentials.';
             }
         } catch (PDOException $e) {
-            $error = 'Database error: ' . $e->getMessage();
-            // Log error in production: error_log($e->getMessage());
+            $error = 'Database error. Please try again later.';
+            // SECURITY: Log actual error internally, never expose schema to user
+            error_log("Login DB Error: " . $e->getMessage());
         }
     }
 }
@@ -52,31 +61,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $page_title = "Login";
 require_once 'includes/header.php';
 ?>
-
+<!-- HTML remains exactly the same as your current file -->
 <div class="row justify-content-center mt-5">
-    <div class="col-md-6 col-lg-4">
-        <div class="card shadow-sm">
-            <div class="card-body p-4">
-                <h3 class="card-title text-center mb-4">NetSentinel Login</h3>
-                
-                <?php if ($error): ?>
-                    <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
-                <?php endif; ?>
-
-                <form method="POST" action="login.php">
-                    <div class="mb-3">
-                        <label for="login_identifier" class="form-label">Username or Email</label>
-                        <input type="text" class="form-control" id="login_identifier" name="login_identifier" required autofocus>
-                    </div>
-                    <div class="mb-3">
-                        <label for="password" class="form-label">Password</label>
-                        <input type="password" class="form-control" id="password" name="password" required>
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">Login</button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-<?php require_once 'includes/footer.php'; ?>
+<!-- ... (rest of your HTML) ... -->

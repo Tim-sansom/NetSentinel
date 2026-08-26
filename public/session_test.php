@@ -1,11 +1,20 @@
 <?php
-// Force errors to show
+/**
+ * NetSentinel Session Diagnostic Tool
+ * 
+ * DEVELOPMENT ONLY: This script is used to verify PHP session persistence 
+ * and cookie handling across different pages in the local lab environment.
+ * It must be removed from the production deployment.
+ */
+
+// Force errors to show for debugging purposes
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
 echo "<h2>🔍 PHP Session Diagnostic Test</h2>";
 
 // 1. Check if session is already active
+// This verifies that session_start() was called correctly in previous scripts
 if (session_status() === PHP_SESSION_NONE) {
     echo "<p>Starting a new session...</p>";
     session_start();
@@ -14,6 +23,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // 2. Show session ID and save path
+// Helps diagnose issues where sessions aren't persisting due to directory permissions
 echo "<p><strong>Session ID:</strong> " . session_id() . "</p>";
 echo "<p><strong>Session Save Path:</strong> " . session_save_path() . "</p>";
 

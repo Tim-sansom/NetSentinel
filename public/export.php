@@ -1,6 +1,9 @@
 <?php
-// public/export.php
-// Lightweight CSV Export Engine for NetSentinel
+/**
+ * NetSentinel CSV Export Engine
+ * Lightweight, memory-efficient streaming export for 
+ * Devices, Alerts, Threats, and Audit Logs.
+ */
 
 // 1. Start session FIRST to prevent "headers already sent" errors
 if (session_status() === PHP_SESSION_NONE) {
@@ -11,14 +14,16 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/auth.php';
 
-// 3. Ensure user is logged in
+// 3. Ensure user is logged in (SR2)
 if (!isset($_SESSION['user_id'])) {
     header('Location: login.php');
     exit;
 }
 
 $type = $_GET['type'] ?? '';
-$filename = "netsentinel_" . $type . "_" . date('Y-m-d_His') . ".csv";
+
+// SECURITY: Sanitize filename to prevent directory traversal or header injection
+$filename = "netsentinel_" . preg_replace('/[^a-zA-Z0-9_]/', '', $type) . "_" . date('Y-m-d_His') . ".csv";
 
 // Set headers for CSV download
 header('Content-Type: text/csv; charset=utf-8');
@@ -26,6 +31,9 @@ header('Content-Disposition: attachment; filename="' . $filename . '"');
 header('Pragma: no-cache');
 header('Expires: 0');
 
+// PERFORMANCE (NFR1): Open php://output stream.
+// This streams data directly to the browser row-by-row instead of loading 
+// thousands of database rows into PHP memory. Crucial for SME shared hosting limits.
 $output = fopen('php://output', 'w');
 
 // Add UTF-8 BOM so Excel opens special characters correctly
@@ -55,9 +63,11 @@ try {
             $stmt = $pdo->query("SELECT cve_id, title, product, severity, date_added FROM vulnerability_feed ORDER BY date_added DESC");
             break;
 
-        // NEW: Audit Log Export
+        // Audit Log Export (GDPR Safe)
         case 'audit':
             fputcsv($output, ['Timestamp', 'User', 'Action', 'Target Type', 'Target ID', 'IP Address']);
+            // GDPR COMPLIANCE: LEFT JOIN ensures deleted users show as 'Unknown User' 
+            // rather than breaking the export or leaking orphaned IDs.
             $stmt = $pdo->query("
                 SELECT al.created_at AS timestamp, COALESCE(u.username, 'Unknown User') as username, al.action, al.target_type, al.target_id, al.ip_address
                 FROM audit_log al
@@ -70,7 +80,7 @@ try {
             exit('Invalid export type requested.');
     }
 
-    // Stream the data directly to the browser (Lightweight NFR1 compliance)
+    // Stream the data directly to the browser
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         fputcsv($output, $row);
     }

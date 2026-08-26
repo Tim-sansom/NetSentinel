@@ -1,34 +1,34 @@
 <?php
 /**
- * NetSentinel Threat Feed Updater
- * Fetches the CISA KEV feed, filters for the last 12 months, 
- * flags potential RCEs, and upserts into the vulnerability_feed table.
- * 
- * Designed to run via CLI (cron) only.
+ * CISA KEV Threat Feed Updater
+ * Downloads the latest Known Exploited Vulnerabilities (KEV) JSON 
+ * from CISA, parses it, and inserts new entries into the 
+ * vulnerability_feed MySQL table.
  */
 
-// 1. Security: Prevent direct web access
+// SECURITY: Enforce CLI-only execution to prevent remote web exploitation of cron logic.
 if (php_sapi_name() !== 'cli') {
     http_response_code(403);
     die("Access denied. This script must be run from the command line.");
 }
 
 // 2. Bootstrap Database Connection
-// Adjust the path if your cronjobs folder is located elsewhere relative to public/
 require_once __DIR__ . '/../html/includes/db.php';
 
 // 3. Configuration
 $feed_url = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json";
 $log_prefix = "[" . date('Y-m-d H:i:s') . "] ";
+
+// NFR1 (Lightweight): Enforce a 12-month window to prevent database bloat on low-cost SME hosting.
 $one_year_ago = date('Y-m-d', strtotime('-12 months'));
 
-// RCE Keyword Detection Regex
+// Zero-bloat enrichment: Auto-flag RCE and Ransomware keywords server-side so the agent doesn't have to.
 $rce_keywords = '/remote code execution|rce|command injection|arbitrary code|arbitrary commands|code execution|unauthenticated.*execute|execute.*code/i';
 $ransomware_keywords = '/Known/i';
 
 echo $log_prefix . "Starting CISA KEV feed update...\n";
 
-// 4. Fetch the JSON Feed (using cURL for better HTTPS reliability in CLI)
+// 4. Fetch the JSON Feed (using cURL for better HTTPS reliability in CLI environments)
 $ch = curl_init($feed_url);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
@@ -50,18 +50,14 @@ if (!$data || !isset($data['vulnerabilities'])) {
 }
 
 // 5. Prepare SQL Statement (Upsert)
+// Uses ON DUPLICATE KEY UPDATE to safely handle daily cron runs without creating duplicate CVE rows.
 $stmt = $pdo->prepare("
     INSERT INTO vulnerability_feed 
-    (cve_id, title, vendor, product, severity, is_rce, is_kev, ransomware_linked, date_added, due_date, published_date) 
+    (cve_id, title, vendor, product, severity, is_rce, is_kev, ransomware_linked, date_added, due_date, published_date)
     VALUES (?, ?, ?, ?, 'High', ?, 1, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE 
-    title=VALUES(title), 
-    vendor=VALUES(vendor), 
-    product=VALUES(product), 
-    is_rce=VALUES(is_rce), 
-    ransomware_linked=VALUES(ransomware_linked), 
-    due_date=VALUES(due_date), 
-    updated_at=NOW()
+    title=VALUES(title), vendor=VALUES(vendor), product=VALUES(product), 
+    is_rce=VALUES(is_rce), ransomware_linked=VALUES(ransomware_linked), due_date=VALUES(due_date), updated_at=NOW()
 ");
 
 $inserted = 0;
@@ -70,7 +66,7 @@ $skipped = 0;
 
 // 6. Process and Insert
 foreach ($data['vulnerabilities'] as $item) {
-    // Enforce 1-year window to keep DB lightweight
+    // Skip historical data outside the 12-month SME compliance window
     if ($item['dateAdded'] < $one_year_ago) {
         $skipped++;
         continue;
@@ -80,28 +76,20 @@ foreach ($data['vulnerabilities'] as $item) {
     $title = $item['shortDescription'] ?? $item['requiredAction'] ?? 'No description';
     $vendor = $item['vendorProject'] ?? 'Unknown';
     $product = $item['product'] ?? 'Unknown';
-    
-    // Auto-detect RCE and Ransomware links
+
+    // Auto-detect RCE and Ransomware links using regex
     $is_rce = preg_match($rce_keywords, $title) ? 1 : 0;
     $is_ransomware = (isset($item['knownRansomwareCampaignUse']) && $item['knownRansomwareCampaignUse'] === 'Known') ? 1 : 0;
 
     try {
         $stmt->execute([
-            $cve_id, 
-            $title, 
-            $vendor, 
-            $product, 
-            $is_rce, 
-            $is_ransomware, 
-            $item['dateAdded'], 
-            $item['dueDate'] ?? null, 
-            $item['dateAdded'] // Using dateAdded as published proxy for KEV
+            $cve_id, $title, $vendor, $product, $is_rce, $is_ransomware,
+            $item['dateAdded'], $item['dueDate'] ?? null, $item['dateAdded']
         ]);
         
         // rowCount() returns 1 for insert, 2 for update in ON DUPLICATE KEY
         if ($stmt->rowCount() == 1) $inserted++;
         else $updated++;
-        
     } catch (PDOException $e) {
         echo $log_prefix . "DB Error on $cve_id: " . $e->getMessage() . "\n";
     }

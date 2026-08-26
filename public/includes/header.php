@@ -1,15 +1,20 @@
 <?php
-// 1. Start session BEFORE any HTML output
+// 1. SECURITY: Start session BEFORE any HTML output.
+// This prevents "headers already sent" errors and ensures session data is secure.
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
 $page_title = $page_title ?? 'Dashboard'; 
 
-// 2. Helper variables for cleaner template logic
+// 2. Helper variables for cleaner template logic and RBAC
 $is_logged_in = isset($_SESSION['user_id']);
-// Case-insensitive role check ('Admin' == 'admin')
+
+// SECURITY (SR2): Case-insensitive role check. 
+// Prevents authorization bypass if the database stores the role as "Admin" instead of "admin".
 $is_admin = $is_logged_in && isset($_SESSION['role']) && strtolower($_SESSION['role']) === 'admin';
+
+// SECURITY (XSS Prevention): Always sanitize user data before outputting to HTML.
 $username = htmlspecialchars($_SESSION['username'] ?? 'User');
 $role = htmlspecialchars($_SESSION['role'] ?? 'viewer');
 ?>
@@ -20,13 +25,13 @@ $role = htmlspecialchars($_SESSION['role'] ?? 'viewer');
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($page_title) ?> - NetSentinel</title>
     
-    <!-- CSS -->
+    <!-- CSS: Bootstrap 5, DataTables, Bootstrap Icons, Custom Styles -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <link href="assets/css/style.css" rel="stylesheet">
 
-    <!-- JS libraries in <head> so page-level inline scripts can use them -->
+    <!-- JS libraries in <head> so page-level inline scripts can use them immediately -->
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
@@ -52,13 +57,16 @@ $role = htmlspecialchars($_SESSION['role'] ?? 'viewer');
                     <li class="nav-item"><a class="nav-link" href="devices.php"><i class="bi bi-hdd-network"></i> Devices</a></li>
                     <li class="nav-item"><a class="nav-link" href="alerts.php"><i class="bi bi-bell"></i> Recent Alerts</a></li>
                     
-                    <!-- Future/Stretch Goal Links -->
+                    <!-- Stretch Goal Links -->
                     <li class="nav-item"><a class="nav-link" href="anomalies.php"><i class="bi bi-exclamation-triangle"></i> Log Anomalies</a></li>
                     <li class="nav-item"><a class="nav-link" href="discover.php"><i class="bi bi-search"></i> Discovery</a></li>
                     <li class="nav-item"><a class="nav-link" href="networks.php"><i class="bi bi-diagram-3"></i> Networks</a></li>
                     <li class="nav-item"><a class="nav-link" href="threats.php"><i class="bi bi-shield-exclamation"></i> Threats</a></li>
                     
-                    <!-- Admin Only Links -->
+                    <!-- Help Link (All Users) -->
+                    <li class="nav-item"><a class="nav-link" href="help.php"><i class="bi bi-question-circle"></i> Help</a></li>
+                    
+                    <!-- Admin Only Links (RBAC Enforced) -->
                     <?php if ($is_admin): ?>
                         <li class="nav-item">
                             <a class="nav-link text-warning fw-bold" href="admin_users.php">
@@ -70,7 +78,6 @@ $role = htmlspecialchars($_SESSION['role'] ?? 'viewer');
                                 <i class="bi bi-shield-check"></i> Policy Management
                             </a>
                         </li>
-                        <!-- NEW: Audit Logs Link -->
                         <li class="nav-item">
                             <a class="nav-link text-warning fw-bold" href="audit_logs.php">
                                 <i class="bi bi-journal-text"></i> Audit Logs
@@ -104,4 +111,4 @@ $role = htmlspecialchars($_SESSION['role'] ?? 'viewer');
     </div>
 </nav>
 
-<main class="container mt-4"></main>
+<main class="container mt-4">

@@ -1,39 +1,47 @@
 <?php
-// STEP 1: Start session IMMEDIATELY - before ANY output
+/**
+ * NetSentinel Audit Log Viewer
+ * Admin-only comprehensive audit trail with GDPR-safe
+ * user anonymization and CSV export.
+ */
+
+// SECURITY: Start session IMMEDIATELY before ANY file inclusion.
+// This prevents "headers already sent" errors when we need to redirect to login.php.
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// STEP 2: Include dependencies
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/auth.php';
 
-// STEP 3: Check authentication BEFORE including header.php
+// Check authentication
 if (!isset($_SESSION['user_id'])) {
     header('Location: login.php');
     exit;
 }
 
-// Case-insensitive role check
+// SECURITY (SR3): Strict case-insensitive role check.
+// Prevents authorization bypass if the database stores the role as "Admin" instead of "admin" (Fixes D-023).
 if (strtolower($_SESSION['role'] ?? '') !== 'admin') {
     http_response_code(403);
     die('<div class="container mt-4"><div class="alert alert-danger">Access denied. Admin privileges required.</div></div>');
 }
 
 $page_title = 'Audit Logs';
-
-// STEP 4: NOW include header (which outputs HTML)
 require_once __DIR__ . '/includes/header.php';
 
-// STEP 5: Fetch audit logs with LEFT JOIN to handle deleted users (GDPR Right to Erasure compliance)
+// GDPR COMPLIANCE (Right to Erasure): 
+// We use a LEFT JOIN so that if a user is deleted from the 'user' table, 
+// their historical actions are preserved in the audit trail but anonymized as 'Unknown User'.
+// This satisfies data minimization without breaking the security audit chain.
 $stmt = $pdo->query("
     SELECT 
-        al.created_at AS timestamp, 
-        COALESCE(u.username, 'Unknown User') as username, 
-        al.action, 
-        al.target_type, 
-        al.target_id, 
-        al.ip_address, 
+        al.created_at AS timestamp,
+        COALESCE(u.username, 'Unknown User') as username,
+        al.action,
+        al.target_type,
+        al.target_id,
+        al.ip_address,
         al.user_agent
     FROM audit_log al
     LEFT JOIN user u ON al.user_id = u.user_id
@@ -120,7 +128,7 @@ $(document).ready(function() {
         "ordering": true,
         "info": true,
         "pageLength": 25,
-        "order": [[ 0, "desc" ]],
+        "order": [[ 0, "desc" ]], // Default sort by Timestamp descending
         "language": {
             "search": "Filter logs by user, action, or IP:"
         }
