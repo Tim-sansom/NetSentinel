@@ -4,10 +4,10 @@
  * Handles password updates, TOTP 2FA enrollment, and personal
  * settings with strict CSRF protection.
  */
-require_once 'includes/db.php';
-require_once 'includes/auth.php';
-require_once 'includes/audit.php';
-require_once 'includes/2fa.php';
+require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/audit.php';
+require_once __DIR__ . '/includes/2fa.php';
 
 // SECURITY (SR2): Enforce session validation.
 requireLogin();
@@ -31,8 +31,6 @@ if (!$user) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     // SECURITY (SR4): Verify CSRF Token for ALL POST requests.
-    // Prevents Cross-Site Request Forgery attacks where a malicious site 
-    // tries to force the user's browser to submit a form.
     if (!verify_csrf($_POST['csrf_token'] ?? '')) {
         $message = 'Invalid security token. Please refresh and try again.';
         $message_type = 'danger';
@@ -68,7 +66,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([$user_id]);
         $hash = $stmt->fetchColumn();
         
-        // SECURITY: Use timing-safe password_verify() to check the current password.
         if (!password_verify($current_pass, $hash)) {
             $message = 'Current password is incorrect.';
             $message_type = 'danger';
@@ -79,8 +76,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = 'New passwords do not match.';
             $message_type = 'danger';
         } else {
-            // SECURITY: Hash the new password using PHP's default algorithm (currently bcrypt).
-            // Never store plain-text passwords in the database.
             $new_hash = password_hash($new_pass, PASSWORD_DEFAULT);
             $stmt = $pdo->prepare("UPDATE user SET password_hash = ? WHERE user_id = ?");
             $stmt->execute([$new_hash, $user_id]);
@@ -102,7 +97,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $code = trim($_POST['totp_code']);
         $secret = $_SESSION['2fa_setup_secret'] ?? '';
         
-        // SECURITY: verifyCode uses hash_equals() internally to prevent timing attacks.
         if ($secret && LightweightTOTP::verifyCode($secret, $code)) {
             $stmt = $pdo->prepare("UPDATE user SET totp_enabled = 1, totp_secret = ? WHERE user_id = ?");
             $stmt->execute([$secret, $user_id]);
@@ -139,8 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $hash = $stmt->fetchColumn();
         
         if (password_verify($confirm_pass, $hash)) {
-            // GDPR COMPLIANCE: Anonymize the audit trail (set user_id to NULL) BEFORE deleting the user.
-            // This preserves the security history of the action while removing Personally Identifiable Information (PII).
+            // GDPR COMPLIANCE: Anonymize the audit trail BEFORE deleting the user.
             $pdo->prepare("UPDATE audit_log SET user_id = NULL WHERE user_id = ?")->execute([$user_id]);
             
             // Delete user record
@@ -148,7 +141,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             log_audit($pdo, null, 'USER_SELF_DELETED', 'user', $user_id);
             
-            // Destroy session and redirect
             session_unset();
             session_destroy();
             header('Location: login.php?msg=deleted');
@@ -161,8 +153,152 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $page_title = "My Profile";
-require_once 'includes/header.php';
+require_once __DIR__ . '/includes/header.php';
 ?>
-<!-- HTML remains exactly the same as your current file -->
+
 <div class="container mt-4">
-<!-- ... (rest of your HTML) ... -->
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <h2 class="mb-4"><i class="bi bi-person-circle"></i> My Profile</h2>
+
+            <?php if ($message): ?>
+                <div class="alert alert-<?= htmlspecialchars($message_type) ?> alert-dismissible fade show" role="alert">
+                    <?= htmlspecialchars($message) ?>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            <?php endif; ?>
+
+            <!-- Account Settings Card -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="bi bi-envelope"></i> Account Settings</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="profile.php">
+                        <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+                        <input type="hidden" name="update_email" value="1">
+                        
+                        <div class="mb-3">
+                            <label for="username" class="form-label">Username</label>
+                            <input type="text" class="form-control" id="username" value="<?= htmlspecialchars($user['username']) ?>" disabled>
+                            <div class="form-text">Usernames cannot be changed.</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email Address</label>
+                            <input type="email" class="form-control" id="email" name="email" value="<?= htmlspecialchars($user['email']) ?>" required>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary">Update Email</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Security Settings Card -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="bi bi-shield-lock"></i> Change Password</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="profile.php">
+                        <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+                        <input type="hidden" name="update_password" value="1">
+                        
+                        <div class="mb-3">
+                            <label for="current_password" class="form-label">Current Password</label>
+                            <input type="password" class="form-control" id="current_password" name="current_password" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="new_password" class="form-label">New Password</label>
+                            <input type="password" class="form-control" id="new_password" name="new_password" minlength="8" required>
+                            <div class="form-text">Must be at least 8 characters long.</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="confirm_password" class="form-label">Confirm New Password</label>
+                            <input type="password" class="form-control" id="confirm_password" name="confirm_password" minlength="8" required>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-warning text-dark">Change Password</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- 2FA Settings Card -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-phone"></i> Two-Factor Authentication (2FA)</h5>
+                    <?php if ($user['totp_enabled']): ?>
+                        <span class="badge bg-success">Enabled</span>
+                    <?php else: ?>
+                        <span class="badge bg-secondary">Disabled</span>
+                    <?php endif; ?>
+                </div>
+                <div class="card-body">
+                    <?php if (!$user['totp_enabled'] && isset($_SESSION['2fa_setup_secret'])): ?>
+                        <!-- Step 2: Verify Code -->
+                        <div class="alert alert-info">
+                            <p>Enter the 6-digit code from your authenticator app to confirm setup:</p>
+                            <div class="bg-white p-3 d-inline-block border rounded mb-3">
+                                <small class="text-muted d-block mb-1">Manual Setup Key:</small>
+                                <code><?= htmlspecialchars($_SESSION['2fa_setup_secret']) ?></code>
+                            </div>
+                            <form method="POST" action="profile.php" class="mt-3">
+                                <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+                                <input type="hidden" name="verify_2fa" value="1">
+                                <div class="input-group" style="max-width: 300px;">
+                                    <input type="text" class="form-control" name="totp_code" placeholder="6-digit code" maxlength="6" pattern="\d{6}" required>
+                                    <button type="submit" class="btn btn-success">Verify & Enable</button>
+                                </div>
+                            </form>
+                        </div>
+                    <?php elseif (!$user['totp_enabled']): ?>
+                        <!-- Step 1: Initialize -->
+                        <p class="text-muted">Add an extra layer of security to your account by enabling 2FA.</p>
+                        <form method="POST" action="profile.php">
+                            <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+                            <input type="hidden" name="init_2fa" value="1">
+                            <button type="submit" class="btn btn-outline-primary">Setup 2FA</button>
+                        </form>
+                    <?php else: ?>
+                        <!-- Disable 2FA -->
+                        <p class="text-muted">2FA is currently active. To disable it, please enter a valid 6-digit code from your authenticator app.</p>
+                        <form method="POST" action="profile.php" class="mt-3">
+                            <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+                            <input type="hidden" name="disable_2fa" value="1">
+                            <div class="input-group" style="max-width: 300px;">
+                                <input type="text" class="form-control" name="totp_code" placeholder="6-digit code" maxlength="6" pattern="\d{6}" required>
+                                <button type="submit" class="btn btn-outline-danger">Disable 2FA</button>
+                            </div>
+                        </form>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Danger Zone Card -->
+            <div class="card shadow-sm border-danger">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Danger Zone</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Once you delete your account, there is no going back. This action is irreversible and complies with GDPR Right to Erasure by anonymizing your audit logs.</p>
+                    <form method="POST" action="profile.php" onsubmit="return confirm('Are you absolutely sure you want to delete your account? This cannot be undone.');">
+                        <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+                        <input type="hidden" name="delete_account" value="1">
+                        
+                        <div class="mb-3">
+                            <label for="confirm_password_delete" class="form-label">Enter your current password to confirm deletion</label>
+                            <input type="password" class="form-control" id="confirm_password_delete" name="confirm_password_delete" required>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-danger">Delete My Account</button>
+                    </form>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/includes/footer.php'; ?>

@@ -19,7 +19,8 @@ $username = htmlspecialchars($_SESSION['username'] ?? 'User');
 $role = htmlspecialchars($_SESSION['role'] ?? 'viewer');
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<!-- Added data-bs-theme="light" as default. JS will override this if user prefers dark -->
+<html lang="en" data-bs-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -37,6 +38,24 @@ $role = htmlspecialchars($_SESSION['role'] ?? 'viewer');
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <!-- Favicons -->
+    <!-- Primary Favicon (SVG - Scales perfectly, transparent background) -->
+    <link rel="icon" type="image/svg+xml" href="assets/img/favicon.svg">
+    
+    <!-- Fallback for older browsers -->
+    <link rel="alternate icon" type="image/png" href="assets/img/favicon.png">
+    
+    <!-- Apple Touch Icon (For mobile home screens) -->
+    <link rel="apple-touch-icon" href="assets/img/favicon.png">
+
+    <!-- Dark/Light Mode: Prevent Flash of Unstyled Content (FOUC) -->
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('netsentinel-theme') || 'light';
+            document.documentElement.setAttribute('data-bs-theme', savedTheme);
+        })();
+    </script>
 </head>
 <body>
 
@@ -88,7 +107,15 @@ $role = htmlspecialchars($_SESSION['role'] ?? 'viewer');
             <?php endif; ?>
             
             <!-- User / Auth Navigation (Right) -->
-            <ul class="navbar-nav ms-auto">
+            <ul class="navbar-nav ms-auto align-items-center">
+                
+                <!-- Dark/Light Mode Toggle Button -->
+                <li class="nav-item me-2">
+                    <button class="btn btn-link nav-link px-2" id="theme-toggle" title="Toggle Dark/Light Mode">
+                        <i class="bi bi-moon-stars-fill" id="theme-icon"></i>
+                    </button>
+                </li>
+
                 <?php if ($is_logged_in): ?>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle d-flex align-items-center gap-2" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -110,5 +137,39 @@ $role = htmlspecialchars($_SESSION['role'] ?? 'viewer');
         </div>
     </div>
 </nav>
+
+<!-- Dark/Light Mode Toggle Logic -->
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const themeToggleBtn = document.getElementById('theme-toggle');
+        const themeIcon = document.getElementById('theme-icon');
+        
+        function updateIcon(theme) {
+            if (theme === 'dark') {
+                themeIcon.classList.remove('bi-moon-stars-fill');
+                themeIcon.classList.add('bi-sun-fill');
+            } else {
+                themeIcon.classList.remove('bi-sun-fill');
+                themeIcon.classList.add('bi-moon-stars-fill');
+            }
+        }
+
+        // Initialize icon based on current theme
+        const currentTheme = document.documentElement.getAttribute('data-bs-theme');
+        updateIcon(currentTheme);
+
+        // Toggle logic
+themeToggleBtn.addEventListener('click', function() {
+    // Read the current theme from the DOM (not the stale variable)
+    const currentTheme = document.documentElement.getAttribute('data-bs-theme');
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    
+    // Apply the new theme
+    document.documentElement.setAttribute('data-bs-theme', newTheme);
+    localStorage.setItem('netsentinel-theme', newTheme);
+    updateIcon(newTheme);
+});
+    });
+</script>
 
 <main class="container mt-4">

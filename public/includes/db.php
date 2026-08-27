@@ -1,4 +1,14 @@
 <?php
+// Only show errors if we are in the development environment (Docker)
+if (getenv('NETSENTINEL_ENV') === 'development') {
+    error_reporting(E_ALL);
+    ini_set('display_errors', 1);
+} else {
+    // In production, hide errors from users but log them to a file
+    error_reporting(0);
+    ini_set('display_errors', 0);
+    ini_set('log_errors', 1);
+}
 /**
  * NetSentinel Database Connection Handler
  * Establishes a secure PDO connection to the MySQL database.

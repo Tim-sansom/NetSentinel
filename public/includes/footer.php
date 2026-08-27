@@ -2,7 +2,9 @@
 
 <footer class="bg-dark text-light text-center py-3 mt-5 border-top border-secondary">
     <div class="container">
-        <small>&copy; 2026 NetSentinel - SME Endpoint Monitoring Prototype Developed By Tim Sansom</small>
+        <small>
+            &copy; <?php echo date('Y'); ?> NetSentinel - SME Endpoint Monitoring Prototype Developed By Tim Sansom v1.0.0
+        </small>
     </div>
 </footer>
 

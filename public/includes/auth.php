@@ -2,27 +2,65 @@
 /**
  * NetSentinel Authentication & Session Management
  * Handles user login, TOTP 2FA verification, session validation,
- * and role-based access control (RBAC).
+ * role-based access control (RBAC), and secure session timeouts.
  */
-require_once 'includes/audit.php'; // Ensure audit logging is available
+
+// ============================================
+// 0. SESSION HARDENING & COOKIE SECURITY (GDPR/ePrivacy Compliance)
+// ============================================
+// NetSentinel ONLY uses strictly necessary session cookies for authentication 
+// and CSRF protection. Under EU law (ePrivacy Directive Art. 5(3)), these are 
+// exempt from cookie consent banners. However, they must be secured against theft.
+
+// 1. Prevent JavaScript access to the session cookie (XSS protection)
+ini_set('session.cookie_httponly', 1);
+
+// 2. Prevent the browser from sending this cookie on cross-site requests (CSRF protection)
+ini_set('session.cookie_samesite', 'Strict');
+
+// 3. Reject uninitialized session IDs to prevent session fixation attacks
+ini_set('session.use_strict_mode', 1);
+
+// 4. Enforce HTTPS for cookies in production. 
+// (Set to 0 for local HTTP development, CHANGE TO 1 for production HTTPS)
+ini_set('session.cookie_secure', 0); 
+
+// Define inactivity timeout: 15 minutes (900 seconds)
+define('SESSION_TIMEOUT', 900); 
+
+require_once __DIR__ . '/audit.php'; 
 
 // ============================================
 // 1. SESSION-BASED AUTH (For Dashboard Pages)
 // ============================================
 
 /**
- * Ensures a user is logged in via PHP session.
- * If not logged in, redirects to login.php and exits.
- * Fulfills SR2 (Access Control).
+ * Ensures a user is logged in via PHP session and hasn't timed out.
+ * If not logged in or timed out, redirects to login.php and exits.
+ * Fulfills SR2 (Access Control & Session Management).
  */
 function requireLogin(): void {
     if (session_status() === PHP_SESSION_NONE) {
         session_start();
     }
+
+    // 1. Check for Inactivity Timeout
+    if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > SESSION_TIMEOUT)) {
+        // Session has expired due to inactivity
+        session_unset();     // Remove all session variables
+        session_destroy();   // Destroy the session data on the server
+        header('Location: login.php?timeout=1'); // Redirect with a timeout flag
+        exit;
+    }
+
+    // 2. Check if user is actually logged in
     if (!isset($_SESSION['user_id'])) {
         header('Location: login.php');
         exit;
     }
+
+    // 3. Update last activity timestamp (Resets the 15-minute timer on every page load/click)
+    $_SESSION['last_activity'] = time();
 }
 
 /**
@@ -36,7 +74,7 @@ function requireAdmin(): void {
     requireLogin();
     if (!isset($_SESSION['role']) || strtolower($_SESSION['role']) !== 'admin') {
         http_response_code(403);
-        die('Access denied. Admin privileges required.');
+        die('<div class="container mt-4"><div class="alert alert-danger">Access denied. Admin privileges required.</div></div>');
     }
 }
 
