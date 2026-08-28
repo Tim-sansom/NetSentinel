@@ -7,23 +7,27 @@
 
 // ============================================
 // 0. SESSION HARDENING & COOKIE SECURITY (GDPR/ePrivacy Compliance)
+// MUST be set BEFORE session_start() is called anywhere
 // ============================================
-// NetSentinel ONLY uses strictly necessary session cookies for authentication 
-// and CSRF protection. Under EU law (ePrivacy Directive Art. 5(3)), these are 
-// exempt from cookie consent banners. However, they must be secured against theft.
 
-// 1. Prevent JavaScript access to the session cookie (XSS protection)
-ini_set('session.cookie_httponly', 1);
-
-// 2. Prevent the browser from sending this cookie on cross-site requests (CSRF protection)
-ini_set('session.cookie_samesite', 'Strict');
-
-// 3. Reject uninitialized session IDs to prevent session fixation attacks
-ini_set('session.use_strict_mode', 1);
-
-// 4. Enforce HTTPS for cookies in production. 
-// (Set to 0 for local HTTP development, CHANGE TO 1 for production HTTPS)
-ini_set('session.cookie_secure', 0); 
+// Set session configuration BEFORE starting session
+if (session_status() === PHP_SESSION_NONE) {
+    // 1. Prevent JavaScript access to the session cookie (XSS protection)
+    ini_set('session.cookie_httponly', 1);
+    
+    // 2. Prevent the browser from sending this cookie on cross-site requests (CSRF protection)
+    ini_set('session.cookie_samesite', 'Strict');
+    
+    // 3. Reject uninitialized session IDs to prevent session fixation attacks
+    ini_set('session.use_strict_mode', 1);
+    
+    // 4. Enforce HTTPS for cookies in production. 
+    // (Set to 0 for local HTTP development, CHANGE TO 1 for production HTTPS)
+    ini_set('session.cookie_secure', 0);
+    
+    // NOW start the session with hardened settings
+    session_start();
+}
 
 // Define inactivity timeout: 15 minutes (900 seconds)
 define('SESSION_TIMEOUT', 900); 
@@ -40,10 +44,8 @@ require_once __DIR__ . '/audit.php';
  * Fulfills SR2 (Access Control & Session Management).
  */
 function requireLogin(): void {
-    if (session_status() === PHP_SESSION_NONE) {
-        session_start();
-    }
-
+    // Session already started at top of file
+    
     // 1. Check for Inactivity Timeout
     if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > SESSION_TIMEOUT)) {
         // Session has expired due to inactivity
@@ -52,13 +54,13 @@ function requireLogin(): void {
         header('Location: login.php?timeout=1'); // Redirect with a timeout flag
         exit;
     }
-
+    
     // 2. Check if user is actually logged in
     if (!isset($_SESSION['user_id'])) {
         header('Location: login.php');
         exit;
     }
-
+    
     // 3. Update last activity timestamp (Resets the 15-minute timer on every page load/click)
     $_SESSION['last_activity'] = time();
 }
@@ -82,9 +84,6 @@ function requireAdmin(): void {
  * Check if the current user has a specific role.
  */
 function hasRole(string $role): bool {
-    if (session_status() === PHP_SESSION_NONE) {
-        session_start();
-    }
     return isset($_SESSION['role']) && strtolower($_SESSION['role']) === strtolower($role);
 }
 
@@ -185,9 +184,6 @@ function validate_json_payload(): array {
  * Generates and returns a CSRF token for the current session.
  */
 function csrf_token(): string {
-    if (session_status() === PHP_SESSION_NONE) {
-        session_start();
-    }
     if (empty($_SESSION['csrf_token'])) {
         // SECURITY: 32 bytes (256 bits) of cryptographic randomness
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
@@ -200,8 +196,5 @@ function csrf_token(): string {
  * Uses hash_equals to prevent timing attacks.
  */
 function verify_csrf(string $token): bool {
-    if (session_status() === PHP_SESSION_NONE) {
-        session_start();
-    }
     return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
 }

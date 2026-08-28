@@ -38,10 +38,42 @@ $is_admin = isset($_SESSION['role']) && strtolower($_SESSION['role']) === 'admin
 ?>
 
 <div class="container-fluid mt-4">
+    <!-- Page Header -->
     <div class="row mb-4">
         <div class="col-12">
-            <h2><i class="bi bi-question-circle"></i> Help & Support</h2>
-            <p class="text-muted">Welcome to NetSentinel. Find step-by-step guides, troubleshooting tips, and system status below.</p>
+            <h2 class="mb-0">
+                <i class="bi bi-question-circle"></i> Help & Support
+                <i class="bi bi-question-circle text-muted ms-2" 
+                   data-bs-toggle="tooltip" 
+                   data-bs-title="User guides, troubleshooting tips, and system status information"
+                   style="cursor: help; font-size: 0.6em; vertical-align: middle;"></i>
+            </h2>
+            <p class="text-muted mb-0 mt-1">Everything you need to know to get the most out of NetSentinel</p>
+        </div>
+    </div>
+
+    <!-- Info Banner - What is this page? -->
+    <div class="alert alert-info d-flex align-items-start mb-4" role="alert">
+        <i class="bi bi-info-circle-fill me-3 mt-1 fs-5"></i>
+        <div>
+            <h6 class="alert-heading mb-2">Welcome to NetSentinel Support</h6>
+            <p class="mb-2 small">
+                This page is designed to help both technical and non-technical users understand how to use the platform, 
+                interpret dashboard data, and resolve common issues quickly.
+            </p>
+            <button class="btn btn-sm btn-link p-0 mt-2" type="button" data-bs-toggle="collapse" data-bs-target="#helpIntro" aria-expanded="false">
+                Show how to use this page
+            </button>
+            <div class="collapse mt-2" id="helpIntro">
+                <div class="card card-body bg-light small">
+                    <p class="mb-2"><strong>How to use this page:</strong></p>
+                    <ul class="mb-0">
+                        <li><strong>How-To Guides:</strong> Step-by-step instructions for common tasks like deploying agents or creating policies.</li>
+                        <li><strong>Troubleshooting & FAQ:</strong> Quick answers to the most common issues, such as devices not reporting or login problems.</li>
+                        <li><strong>System Health:</strong> (Admins only) A quick snapshot of core system components to ensure everything is running smoothly.</li>
+                    </ul>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -50,7 +82,13 @@ $is_admin = isset($_SESSION['role']) && strtolower($_SESSION['role']) === 'admin
         <div class="col-md-8">
             <div class="card shadow-sm">
                 <div class="card-header bg-white">
-                    <h5 class="mb-0"><i class="bi bi-book"></i> How-To Guides</h5>
+                    <h5 class="mb-0">
+                        <i class="bi bi-book"></i> How-To Guides
+                        <i class="bi bi-question-circle text-muted ms-2" 
+                           data-bs-toggle="tooltip" 
+                           data-bs-title="Step-by-step instructions for common NetSentinel tasks"
+                           style="cursor: help;"></i>
+                    </h5>
                 </div>
                 <div class="card-body">
                     <div class="accordion" id="howToAccordion">
@@ -65,9 +103,27 @@ $is_admin = isset($_SESSION['role']) && strtolower($_SESSION['role']) === 'admin
                                 <div class="accordion-body">
                                     <p>NetSentinel uses a simple "Traffic Light" system to show you the health of your devices:</p>
                                     <ul>
-                                        <li><span style="background-color: #dc3545; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold;">Red (Critical/High)</span>: Immediate action required. Examples: Firewall is turned off, or dangerous ports (like Remote Desktop) are open to the internet.</li>
-                                        <li><span style="background-color: #ffc107; color: black; padding: 2px 8px; border-radius: 4px; font-weight: bold;">Yellow (Medium)</span>: Needs attention soon. Examples: Missing non-critical updates, or unexpected software running.</li>
-                                        <li><span style="background-color: #212529; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold;">Black (Low/Info)</span>: All clear. Standard system information and routine checks.</li>
+                                        <li>
+                                            <span class="badge bg-danger me-2" 
+                                                  data-bs-toggle="tooltip" 
+                                                  data-bs-title="Requires immediate investigation and remediation."
+                                                  style="cursor: help;">Red (Critical/High)</span>: 
+                                            Immediate action required. Examples: Firewall is turned off, or dangerous ports (like Remote Desktop) are open to the internet.
+                                        </li>
+                                        <li>
+                                            <span class="badge bg-warning text-dark me-2" 
+                                                  data-bs-toggle="tooltip" 
+                                                  data-bs-title="Should be reviewed and addressed in the near future."
+                                                  style="cursor: help;">Yellow (Medium)</span>: 
+                                            Needs attention soon. Examples: Missing non-critical updates, or unexpected software running.
+                                        </li>
+                                        <li>
+                                            <span class="badge bg-dark text-white me-2" 
+                                                  data-bs-toggle="tooltip" 
+                                                  data-bs-title="Normal operation. No action required."
+                                                  style="cursor: help;">Black (Low/Info)</span>: 
+                                            All clear. Standard system information and routine checks.
+                                        </li>
                                     </ul>
                                 </div>
                             </div>
@@ -87,8 +143,8 @@ $is_admin = isset($_SESSION['role']) && strtolower($_SESSION['role']) === 'admin
                                         <li>Click <strong>Discovery</strong> in the top menu.</li>
                                         <li>Click <strong>Run Scan</strong>. The system will search your local network for active devices.</li>
                                         <li>Find the computer you want to monitor in the list and click <strong>Deploy Agent</strong>.</li>
-                                        <li>Download the generated <code>config.env</code> file.</li>
-                                        <li>On the target computer, place the <code>config.env</code> file in the same folder as the NetSentinel Python Agent.</li>
+                                        <li>Download the generated configuration details.</li>
+                                        <li>On the target computer, place the configuration file in the same folder as the NetSentinel Python Agent.</li>
                                         <li>Run the agent. It will automatically connect and appear on your <strong>Devices</strong> page within 5 minutes.</li>
                                     </ol>
                                 </div>
@@ -143,7 +199,13 @@ $is_admin = isset($_SESSION['role']) && strtolower($_SESSION['role']) === 'admin
         <div class="col-md-4">
             <div class="card shadow-sm h-100">
                 <div class="card-header bg-white">
-                    <h5 class="mb-0"><i class="bi bi-tools"></i> Troubleshooting & FAQ</h5>
+                    <h5 class="mb-0">
+                        <i class="bi bi-tools"></i> Troubleshooting & FAQ
+                        <i class="bi bi-question-circle text-muted ms-2" 
+                           data-bs-toggle="tooltip" 
+                           data-bs-title="Quick answers to the most common questions and issues"
+                           style="cursor: help;"></i>
+                    </h5>
                 </div>
                 <div class="card-body">
                     <div class="accordion accordion-flush" id="faqAccordion">
@@ -157,7 +219,7 @@ $is_admin = isset($_SESSION['role']) && strtolower($_SESSION['role']) === 'admin
                                 <div class="accordion-body small">
                                     <ul class="mb-0">
                                         <li>Ensure the Python Agent is actually running on the device.</li>
-                                        <li>Check that the <code>config.env</code> file is in the same folder as the agent.</li>
+                                        <li>Check that the configuration file is in the same folder as the agent.</li>
                                         <li>Wait up to 5 minutes. The agent reports on a schedule, not instantly.</li>
                                         <li>Check the <code>agent.log</code> file on the device for "Connection Refused" errors.</li>
                                     </ul>
@@ -204,19 +266,34 @@ $is_admin = isset($_SESSION['role']) && strtolower($_SESSION['role']) === 'admin
         <div class="col-12">
             <div class="card shadow-sm border-0 bg-light">
                 <div class="card-body">
-                    <h6 class="text-muted mb-3"><i class="bi bi-activity"></i> System Health (Admin View)</h6>
+                    <h6 class="text-muted mb-3">
+                        <i class="bi bi-activity"></i> System Health (Admin View)
+                        <i class="bi bi-question-circle text-muted ms-2" 
+                           data-bs-toggle="tooltip" 
+                           data-bs-title="Real-time status of core NetSentinel backend components"
+                           style="cursor: help;"></i>
+                    </h6>
                     <div class="d-flex gap-4">
                         <div>
                             <span class="small text-muted">Database:</span>
-                            <span class="badge bg-<?= $db_color ?> ms-1"><?= $db_status ?></span>
+                            <span class="badge bg-<?= $db_color ?> ms-1" 
+                                  data-bs-toggle="tooltip" 
+                                  data-bs-title="Connection status to the MySQL backend"
+                                  style="cursor: help;"><?= $db_status ?></span>
                         </div>
                         <div>
                             <span class="small text-muted">Agent API:</span>
-                            <span class="badge bg-success ms-1">Operational</span>
+                            <span class="badge bg-success ms-1" 
+                                  data-bs-toggle="tooltip" 
+                                  data-bs-title="Endpoint accepting telemetry from Python agents"
+                                  style="cursor: help;">Operational</span>
                         </div>
                         <div>
                             <span class="small text-muted">Threat Feed:</span>
-                            <span class="badge bg-success ms-1">Updated</span>
+                            <span class="badge bg-success ms-1" 
+                                  data-bs-toggle="tooltip" 
+                                  data-bs-title="CISA KEV vulnerability database is up to date"
+                                  style="cursor: help;">Updated</span>
                         </div>
                     </div>
                 </div>
@@ -226,5 +303,18 @@ $is_admin = isset($_SESSION['role']) && strtolower($_SESSION['role']) === 'admin
     <?php endif; ?>
 
 </div>
+
+<script>
+$(document).ready(function() {
+    // Initialize Bootstrap Tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl, {
+            trigger: 'hover',
+            placement: 'auto'
+        })
+    })
+});
+</script>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

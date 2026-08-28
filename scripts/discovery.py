@@ -2,13 +2,8 @@
 """
 NetSentinel Network Discovery Script
 
-This script is executed by the PHP backend (inside the Docker container) 
-to discover active devices on the local network. It takes a JSON string 
-of network configurations via CLI arguments, pings the subnets, parses 
-the ARP table for MAC addresses, and outputs a clean JSON array for PHP to parse.
-
-Designed to be lightweight and fast, using concurrent threading to scan 
-entire /24 subnets in seconds without blocking the web dashboard.
+Detects active devices, MAC addresses, hostnames, and OS types.
+Uses MAC OUI, Hostname Intelligence, and TTL heuristics for accurate device identification.
 """
 
 import sys
@@ -18,55 +13,104 @@ import subprocess
 import platform
 import concurrent.futures
 import socket
+import time
+import re
 
 
-def ping_host(ip: str, timeout: int = 1) -> bool:
+def ping_host(ip: str, timeout: int = 1) -> dict:
     """
-    Send a single ICMP echo request to check if a host is alive.
-    
-    Handles the significant differences in ping command syntax between 
-    Windows, Linux, and macOS to ensure cross-platform reliability.
-    
-    Args:
-        ip: The target IP address.
-        timeout: Maximum seconds to wait for a response.
-        
-    Returns:
-        True if the host responds to the ping.
+    Ping a host and return TTL info for OS detection.
+    Returns dict with 'alive': bool, 'ttl': int
     """
-    is_windows = platform.system().lower() == 'windows'
-    
-    # Ping uses -n on Windows, -c on Unix-like systems
-    param = '-n' if is_windows else '-c'
-    
-    # Timeout uses -w (milliseconds) on Windows, -W (seconds/milliseconds) on Unix
-    timeout_param = '-w' if is_windows else '-W'
-    timeout_val = '1000' if is_windows else str(timeout)
+    result = {
+        'alive': False,
+        'ttl': None
+    }
     
     try:
-        result = subprocess.run(
+        # Use ping with verbose output to get TTL
+        param = '-n' if platform.system().lower() == 'windows' else '-c'
+        timeout_param = '-W' if platform.system().lower() != 'windows' else '-w'
+        timeout_val = '1000' if platform.system().lower() == 'windows' else str(timeout)
+        
+        proc = subprocess.run(
             ['ping', param, '1', timeout_param, timeout_val, ip],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
             timeout=timeout + 2
         )
-        return result.returncode == 0
-    except subprocess.TimeoutExpired:
-        return False
+        
+        if proc.returncode == 0:
+            result['alive'] = True
+            # Extract TTL from ping output
+            ttl_match = re.search(r'TTL[=:]?(\d+)', proc.stdout, re.IGNORECASE)
+            if ttl_match:
+                result['ttl'] = int(ttl_match.group(1))
+                
     except Exception:
-        return False
+        pass
+        
+    return result
+
+
+def detect_device_type(ttl: int, hostname: str, mac: str, ip: str) -> str:
+    """
+    Detect device type using MAC OUI, Hostname Intelligence, and TTL.
+    """
+    
+    # 1. MAC OUI LOOKUP (Most Accurate - Works best on Proxmox Host)
+    # We check the first 8 chars (3 octets) of the MAC address.
+    if mac and mac != 'unknown' and len(mac) >= 8:
+        oui = mac[:8].lower()
+        
+        # Common SME/Home Lab OUIs
+        if oui in ['b8:27:eb', 'dc:a6:32', 'e4:5f:01', '28:cd:c1']:
+            return 'Raspberry Pi'
+        if oui in ['a4:83:e7', '3c:06:30', '8c:85:90', 'f0:18:98']: 
+            # These are common Apple OUIs (sample)
+            return 'Apple Device (macOS/iOS)'
+        if oui in ['60:01:94', '18:fe:34', '24:0a:c4']:
+            return 'IoT Device (Espressif/Tuya)'
+        if oui in ['00:1a:11', '00:17:c5', '00:18:4d']:
+            return 'Network Device (Router/AP)'
+
+    # 2. HOSTNAME INTELLIGENCE
+    if hostname and hostname != 'unknown':
+        h_lower = hostname.lower()
+        if any(x in h_lower for x in ['iphone', 'ipad', 'mac', 'apple', '.local']):
+            return 'Apple Device (macOS/iOS)'
+        if any(x in h_lower for x in ['pi', 'raspberry', 'debian', 'ubuntu']):
+            return 'Linux (Pi/Debian/Ubuntu)'
+        if any(x in h_lower for x in ['router', 'gateway', 'fritz', 'ubiquiti']):
+            return 'Network Device (Router/AP)'
+        if any(x in h_lower for x in ['iot', 'cam', 'bulb', 'plug']):
+            return 'IoT Device'
+
+    # 3. HEURISTICS (IP Address & TTL)
+    # If IP ends in .1, it's almost always the Gateway/Router
+    if ip.endswith('.1'):
+        return 'Likely Gateway/Router'
+
+    # TTL Fallback
+    if not ttl:
+        return 'Unknown'
+    
+    if ttl >= 120:
+        return 'Windows'
+    elif ttl >= 64:
+        return 'Linux/Unix (Direct)'
+    elif ttl >= 50:
+        return 'Linux/Unix (Routed)'
+    elif ttl >= 250:
+        return 'Network Device (Infrastructure)'
+    else:
+        return 'Unknown'
 
 
 def get_arp_table() -> dict:
     """
     Parse the system ARP table to get IP -> MAC mappings.
-    
-    Crucial for Docker environments: Containers cannot see the host's ARP table.
-    We must parse the container's own ARP cache (built up by the ping sweep) 
-    using 'ip neigh' (Linux) or 'arp -a' (Windows/macOS).
-    
-    Returns:
-        A dictionary mapping IP addresses to lowercase MAC addresses.
+    MUST be called AFTER ping sweep.
     """
     arp_map = {}
     os_name = platform.system().lower()
@@ -90,12 +134,11 @@ def get_arp_table() -> dict:
                     except (IndexError, ValueError):
                         continue
                         
-        else:  # Linux (Docker container)
-            # Try 'ip neigh' first (most reliable in modern Linux containers)
+        else:  # Linux
+            # Try 'ip neigh' first
             result = subprocess.run(['ip', '-4', 'neigh', 'show'], capture_output=True, text=True, timeout=5)
             for line in result.stdout.splitlines():
                 parts = line.split()
-                # Format: IP dev eth0 lladdr MAC REACHABLE/STALE/PERMANENT
                 if len(parts) >= 5:
                     ip = parts[0]
                     for i, part in enumerate(parts):
@@ -104,7 +147,7 @@ def get_arp_table() -> dict:
                             arp_map[ip] = mac
                             break
                             
-            # Fallback: try traditional 'arp -n' if ip command didn't work
+            # Fallback to 'arp -n'
             if not arp_map:
                 try:
                     result = subprocess.run(['arp', '-n'], capture_output=True, text=True, timeout=5)
@@ -119,21 +162,13 @@ def get_arp_table() -> dict:
                     pass
                     
     except Exception as e:
-        print(f"ARP table parsing error: {e}", file=sys.stderr)
+        pass
         
     return arp_map
 
 
 def get_hostname(ip: str) -> str:
-    """
-    Perform reverse DNS lookup for an IP address.
-    
-    Args:
-        ip: The target IP address.
-        
-    Returns:
-        The resolved hostname, or 'unknown' if DNS fails.
-    """
+    """Perform reverse DNS lookup."""
     try:
         hostname = socket.gethostbyaddr(ip)[0]
         return hostname
@@ -141,62 +176,56 @@ def get_hostname(ip: str) -> str:
         return 'unknown'
 
 
-def scan_subnet(network_config: dict, arp_table: dict) -> list:
+def scan_subnet(network_config: dict, vlan: str = None) -> list:
     """
-    Scan a single subnet and return discovered devices.
-    
-    Uses a ThreadPoolExecutor to ping all IPs concurrently. This reduces 
-    scan time from minutes to seconds, keeping the dashboard responsive.
-    
-    Args:
-        network_config: Dictionary containing 'cidr', 'name', and 'vlan_id'.
-        arp_table: The parsed ARP table for MAC address lookups.
-        
-    Returns:
-        A list of dictionaries representing discovered devices.
+    Scan a subnet and return discovered devices with OS detection.
     """
     cidr = network_config.get('cidr', '')
     name = network_config.get('name', 'Unknown')
-    vlan = network_config.get('vlan_id')
     
     try:
         network = ipaddress.ip_network(cidr, strict=False)
     except ValueError:
-        return []  # Invalid CIDR, skip
+        return []
         
-    # Step 1: Ping all IPs concurrently (max 50 threads to prevent resource exhaustion)
-    alive_hosts = []
+    # STEP 1: Ping all IPs to populate ARP cache and get TTL
+    alive_hosts = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
         futures = {executor.submit(ping_host, str(ip)): str(ip) for ip in network.hosts()}
         for future in concurrent.futures.as_completed(futures):
-            if future.result():
-                alive_hosts.append(futures[future])
-                
-    # Step 2: Match with ARP table and get hostnames
+            ip = futures[future]
+            result = future.result()
+            if result['alive']:
+                alive_hosts[ip] = result['ttl']
+    
+    # STEP 2: Wait for ARP cache
+    time.sleep(2)
+    
+    # STEP 3: Read ARP table
+    arp_table = get_arp_table()
+    
+    # STEP 4: Build device list with Hostname Intelligence + TTL
     devices = []
-    for ip in alive_hosts:
+    for ip, ttl in alive_hosts.items():
         mac = arp_table.get(ip, 'unknown')
         hostname = get_hostname(ip)
+        
+        # UPDATED: Pass TTL, hostname, MAC, and IP for multi-layered detection
+        os_type = detect_device_type(ttl, hostname, mac, ip)
         
         devices.append({
             'ip': ip,
             'mac': mac,
+            'hostname': hostname,
+            'device_type': os_type,
             'network_name': name if name else 'Unknown',
-            'vlan_id': str(vlan) if vlan is not None else 'N/A',
-            'hostname': hostname
+            'vlan_id': str(vlan) if vlan is not None else 'N/A'
         })
         
     return devices
 
 
 def main():
-    """
-    Main execution entry point for the discovery script.
-    
-    Expects a single CLI argument: a JSON string containing an array 
-    of network configurations. Outputs a JSON array of discovered devices 
-    to stdout for the PHP backend to parse.
-    """
     if len(sys.argv) < 2:
         print(json.dumps({"error": "No network configuration provided"}))
         sys.exit(1)
@@ -207,13 +236,12 @@ def main():
         print(json.dumps({"error": "Invalid JSON configuration"}))
         sys.exit(1)
         
-    arp_table = get_arp_table()
     all_devices = []
     
     for net in networks:
-        all_devices.extend(scan_subnet(net, arp_table))
+        vlan = net.get('vlan_id')
+        all_devices.extend(scan_subnet(net, vlan))
         
-    # Output valid JSON for PHP to parse
     print(json.dumps(all_devices))
 
 

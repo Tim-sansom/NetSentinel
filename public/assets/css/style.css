@@ -25,3 +25,17 @@
     background-color: #0d6efd !important; /* Solid Blue */
     color: #ffffff !important; 
 }
+/* Tooltip icon styling */
+[data-bs-toggle="tooltip"] {
+    cursor: help;
+    transition: color 0.2s;
+}
+
+[data-bs-toggle="tooltip"]:hover {
+    color: #0d6efd !important; /* Bootstrap primary blue on hover */
+}
+
+/* Make tooltip icons slightly smaller in tables */
+th [data-bs-toggle="tooltip"] {
+    font-size: 0.85em;
+}
