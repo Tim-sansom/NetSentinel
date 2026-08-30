@@ -1,5 +1,5 @@
 <?php
-/**
+ /**
  * NetSentinel Network Discovery Page
  * Triggers Python ARP/Ping scan via AJAX and displays
  * live results for agent deployment. Also allows quick 
@@ -23,6 +23,153 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
+// === AJAX HANDLER: Must be at the very top, before any HTML ===
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['trigger_scan'])) {
+    
+    // DEBUG: Initialize log file ONLY when a scan is triggered
+    $debug_file = '/tmp/discovery_debug.log';
+    file_put_contents($debug_file, 
+        "\n\n=== SCAN STARTED: " . date('Y-m-d H:i:s') . " ===\n", 
+        FILE_APPEND
+    );
+
+    // Disable any output buffering issues
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+    
+    header('Content-Type: application/json');
+    header('Cache-Control: no-cache, no-store, must-revalidate');
+    
+    try {
+        // 1. Fetch configured networks
+        $stmt = $pdo->query("SELECT network_id, cidr, name, vlan_id FROM networks");
+        $networks = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        if (empty($networks)) {
+            echo json_encode(['success' => false, 'error' => 'No networks configured.']);
+            exit(0);
+        }
+
+        // 2. Create scan session
+        $stmt = $pdo->prepare("INSERT INTO network_scan (user_id, networks_scanned, status) VALUES (?, ?, 'running')");
+        $stmt->execute([$_SESSION['user_id'], count($networks)]);
+        $scan_id = $pdo->lastInsertId();
+        
+        file_put_contents($debug_file, "Created scan session ID: $scan_id\n", FILE_APPEND);
+
+        // 3. Execute Python script
+        $script_path = '/var/www/scripts/discovery.py';
+        $python_path = '/usr/bin/python3';
+        $networks_json = json_encode($networks);
+
+        if (!file_exists($script_path) || !file_exists($python_path)) {
+            $pdo->prepare("UPDATE network_scan SET status = 'failed' WHERE scan_id = ?")->execute([$scan_id]);
+            echo json_encode(['success' => false, 'error' => 'Script or Python not found.']);
+            exit(0);
+        }
+
+        $cmd = "$python_path $script_path " . escapeshellarg($networks_json);
+        $output = [];
+        $return_var = 0;
+        exec($cmd, $output, $return_var);
+        $raw_output = implode("\n", $output);
+        
+        file_put_contents($debug_file, "Python script exit code: $return_var\n", FILE_APPEND);
+
+        if ($return_var === 0) {
+            $result = json_decode($raw_output, true);
+            
+            if (json_last_error() === JSON_ERROR_NONE && is_array($result)) {
+                file_put_contents($debug_file, "Successfully parsed " . count($result) . " devices from Python.\n", FILE_APPEND);
+                
+                // 4. SAVE TO DATABASE
+                $devices_saved = 0;
+                foreach ($result as $device) {
+                    try {
+                        // Log what we're trying to insert
+                        file_put_contents($debug_file, 
+                            "Attempting to insert: " . json_encode($device) . "\n", 
+                            FILE_APPEND
+                        );
+                        
+                        // Fix VLAN ID: Convert "N/A" or non-numeric values to NULL
+                        $vlan_val = $device['vlan_id'] ?? null;
+                        if ($vlan_val === 'N/A' || !is_numeric($vlan_val)) {
+                            $vlan_val = null;
+                        }
+                        
+                        $insert_stmt = $pdo->prepare("
+                            INSERT INTO network_scan_result 
+                            (scan_id, ip_address, mac_address, hostname, device_type, network_name, vlan_id, first_seen, last_seen, is_active) 
+                            VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)
+                        ");
+                        
+                        $success = $insert_stmt->execute([
+                            $scan_id,
+                            $device['ip'] ?? '',
+                            $device['mac'] ?? 'unknown',
+                            $device['hostname'] ?? 'unknown',
+                            $device['device_type'] ?? 'Unknown',
+                            $device['network_name'] ?? 'Unknown',
+                            $vlan_val
+                        ]);
+                        
+                        if ($success) {
+                            file_put_contents($debug_file, "✓ SUCCESS: Inserted {$device['ip']}\n", FILE_APPEND);
+                            $devices_saved++;
+                        } else {
+                            file_put_contents($debug_file, "✗ FAILED: Insert returned false for {$device['ip']}\n", FILE_APPEND);
+                        }
+                    } catch (PDOException $e) {
+                        file_put_contents($debug_file, 
+                            "✗ PDO ERROR: " . $e->getMessage() . " for {$device['ip']}\n", 
+                            FILE_APPEND
+                        );
+                    }
+                }
+
+                // Log final count
+                file_put_contents($debug_file, "TOTAL SAVED: $devices_saved out of " . count($result) . "\n", FILE_APPEND);
+
+                // 5. Update scan session
+                $pdo->prepare("UPDATE network_scan SET status = 'completed', scan_completed = NOW(), devices_found = ? WHERE scan_id = ?")
+                    ->execute([$devices_saved, $scan_id]);
+
+                // 6. Return JSON
+                echo json_encode([
+                    'success' => true,
+                    'message' => "Scan completed. Found and saved {$devices_saved} devices.",
+                    'devices' => $result,
+                    'scan_id' => $scan_id
+                ]);
+                exit(0);
+            } else {
+                $pdo->prepare("UPDATE network_scan SET status = 'failed' WHERE scan_id = ?")->execute([$scan_id]);
+                echo json_encode([
+                    'success' => false, 
+                    'error' => "Failed to parse Python output.",
+                    'raw_output' => substr($raw_output, 0, 500)
+                ]);
+                exit(0);
+            }
+        } else {
+            $pdo->prepare("UPDATE network_scan SET status = 'failed' WHERE scan_id = ?")->execute([$scan_id]);
+            echo json_encode([
+                'success' => false, 
+                'error' => "Script failed (Exit code: $return_var).",
+                'output' => substr($raw_output, 0, 500)
+            ]);
+            exit(0);
+        }
+    } catch (PDOException $e) {
+        error_log("Discovery DB Error: " . $e->getMessage());
+        echo json_encode(['success' => false, 'error' => "Database error: " . $e->getMessage()]);
+        exit(0);
+    }
+}
+
+// === REGULAR PAGE RENDERING ===
 $page_title = 'Network Discovery';
 $message = '';
 $message_type = '';
@@ -30,17 +177,13 @@ $message_type = '';
 // Handle "Add This Machine" (localhost registration)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_localhost'])) {
     try {
-        // Generate unique device UUID and API token
         $device_uuid = 'localhost-' . bin2hex(random_bytes(4));
         $api_token = 'NetSentinel_' . bin2hex(random_bytes(16));
         $token_hash = hash('sha256', $api_token);
-        
-        // Get server hostname and OS details
         $hostname = gethostname() ?: 'localhost';
         $os_family = php_uname('s');
         $os_version = php_uname('r');
         
-        // Insert device into database
         $stmt = $pdo->prepare("
             INSERT INTO device 
             (device_uuid, hostname, ip_address, os_family, os_version, token_hash, is_active, created_at)
@@ -48,14 +191,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_localhost'])) {
         ");
         $stmt->execute([$device_uuid, $hostname, $os_family, $os_version, $token_hash]);
         
-        // SECURITY (SR4): Log the administrative action
         require_once __DIR__ . '/includes/audit.php';
         log_audit($pdo, $_SESSION['user_id'], 'DEVICE_ADDED_LOCALHOST', 'device', $pdo->lastInsertId());
         
         $message = "Localhost registered successfully! Device UUID: <code>$device_uuid</code>";
         $message_type = 'success';
-        
-        // Store token in session for immediate display
         $_SESSION['localhost_token'] = $api_token;
         $_SESSION['localhost_uuid'] = $device_uuid;
         
@@ -63,63 +203,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_localhost'])) {
         $message = 'Error registering localhost: ' . htmlspecialchars($e->getMessage());
         $message_type = 'danger';
     }
-}
-
-// Handle Scan Trigger (via AJAX)
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['trigger_scan'])) {
-    header('Content-Type: application/json');
-    
-    try {
-        // 1. Fetch configured networks from DB
-        $stmt = $pdo->query("SELECT cidr, name, vlan_id FROM networks");
-        $networks = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        if (empty($networks)) {
-            echo json_encode(['success' => false, 'error' => 'No networks configured. Please add a network in Network Management first.']);
-            exit;
-        }
-
-        // 2. Prepare JSON payload
-        $networks_json = json_encode($networks);
-
-        // 3. PATHS INSIDE THE DOCKER CONTAINER (Matches docker-compose.yml volumes)
-        $script_path = '/var/www/scripts/discovery.py';
-        $python_path = '/usr/bin/python3';
-
-        if (!file_exists($script_path) || !file_exists($python_path)) {
-            echo json_encode(['success' => false, 'error' => 'CRITICAL: Script or Python not found in container.']);
-            exit;
-        }
-
-        // 4. Execute the command
-        // SECURITY (SR3): CRITICAL - Use escapeshellarg() to prevent Command Injection attacks.
-        // We omit '2>&1' to prevent Python debug output from corrupting the JSON response.
-        $cmd = "$python_path $script_path " . escapeshellarg($networks_json);
-        
-        $output = [];
-        $return_var = 0;
-        exec($cmd, $output, $return_var);
-        $raw_output = implode("\n", $output);
-
-        if ($return_var === 0) {
-            $result = json_decode($raw_output, true);
-            if (json_last_error() === JSON_ERROR_NONE && is_array($result)) {
-                echo json_encode([
-                    'success' => true,
-                    'message' => "Scan completed. Found " . count($result) . " devices.",
-                    'devices' => $result
-                ]);
-            } else {
-                echo json_encode(['success' => false, 'error' => "Failed to parse Python output: " . $raw_output]);
-            }
-        } else {
-            echo json_encode(['success' => false, 'error' => "Discovery script failed (Exit code: $return_var)."]);
-        }
-    } catch (PDOException $e) {
-        error_log("Discovery DB Error: " . $e->getMessage());
-        echo json_encode(['success' => false, 'error' => "Database error."]);
-    }
-    exit; // Important: exit after JSON response to prevent HTML leakage
 }
 
 include __DIR__ . '/includes/header.php';
@@ -139,7 +222,6 @@ include __DIR__ . '/includes/header.php';
             <p class="text-muted mb-0 mt-1">Scan your local network or instantly register this server for testing</p>
         </div>
         <div>
-            <!-- FIXED: Removed data-bs-toggle="tooltip" to prevent conflict with modal. Initialized via JS below. -->
             <button class="btn btn-success me-2" id="addThisMachineBtn" data-bs-toggle="modal" data-bs-target="#localhostModal">
                 <i class="bi bi-plus-circle me-1"></i> Add This Machine
             </button>
@@ -165,7 +247,7 @@ include __DIR__ . '/includes/header.php';
         </div>
     <?php endif; ?>
 
-    <!-- Info Banner - What is this page? -->
+    <!-- Info Banner -->
     <div class="alert alert-info d-flex align-items-start mb-4" role="alert">
         <i class="bi bi-info-circle-fill me-3 mt-1 fs-5"></i>
         <div>
@@ -193,6 +275,63 @@ include __DIR__ . '/includes/header.php';
                         <li><strong>Actions:</strong> Click "Deploy Agent" to get the configuration needed to install the NetSentinel agent on that specific device.</li>
                     </ul>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scan History -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white py-3">
+            <h5 class="mb-0 text-muted">
+                <i class="bi bi-clock-history me-2"></i>Recent Scan History
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <!-- Table always exists now so DataTables can initialize -->
+                <table class="table table-sm table-hover" id="scanHistoryTable" style="width:100%">
+                    <thead>
+                        <tr>
+                            <th>Scan ID</th>
+                            <th>Started</th>
+                            <th>Completed</th>
+                            <th>Networks</th>
+                            <th>Devices Found</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php 
+                        $scan_history = $pdo->query("
+                            SELECT ns.*, u.username
+                            FROM network_scan ns
+                            LEFT JOIN user u ON ns.user_id = u.user_id
+                            ORDER BY ns.scan_started DESC
+                        ")->fetchAll(PDO::FETCH_ASSOC);
+                        
+                        foreach ($scan_history as $scan): 
+                        ?>
+                        <tr>
+                            <!-- data-order ensures numeric sorting works correctly (1, 2, 10 instead of 1, 10, 2) -->
+                            <td data-order="<?= $scan['scan_id'] ?>">#<?= $scan['scan_id'] ?></td>
+                            <td><?= date('d M Y, H:i', strtotime($scan['scan_started'])) ?></td>
+                            <td><?= $scan['scan_completed'] ? date('H:i', strtotime($scan['scan_completed'])) : 'In Progress' ?></td>
+                            <td><?= $scan['networks_scanned'] ?></td>
+                            <td><?= $scan['devices_found'] ?></td>
+                            <td>
+                                <?php
+                                $badge_class = [
+                                    'running' => 'bg-primary',
+                                    'completed' => 'bg-success',
+                                    'failed' => 'bg-danger'
+                                ][$scan['status']] ?? 'bg-secondary';
+                                ?>
+                                <span class="badge <?= $badge_class ?>"><?= ucfirst($scan['status']) ?></span>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -230,48 +369,12 @@ include __DIR__ . '/includes/header.php';
                     <table id="discoveryTable" class="table table-hover table-striped" style="width:100%">
                         <thead class="table-dark">
                             <tr>
-                                <th>
-                                    IP Address
-                                    <i class="bi bi-question-circle text-muted ms-1" 
-                                       data-bs-toggle="tooltip" 
-                                       data-bs-title="The network address of the discovered device."
-                                       style="cursor: help;"></i>
-                                </th>
-                                <th>
-                                    MAC Address
-                                    <i class="bi bi-question-circle text-muted ms-1" 
-                                       data-bs-toggle="tooltip" 
-                                       data-bs-title="The unique hardware identifier. 'unknown' means the scan couldn't retrieve it."
-                                       style="cursor: help;"></i>
-                                </th>
-                                <th>
-                                    Hostname
-                                    <i class="bi bi-question-circle text-muted ms-1" 
-                                       data-bs-toggle="tooltip" 
-                                       data-bs-title="The device name on the network. 'unknown' means DNS resolution failed."
-                                       style="cursor: help;"></i>
-                                </th>
-                                <th>
-                                    Device Type
-                                    <i class="bi bi-question-circle text-muted ms-1" 
-                                       data-bs-toggle="tooltip" 
-                                       data-bs-title="Detected operating system based on network TTL values and hostname heuristics."
-                                       style="cursor: help;"></i>
-                                </th>
-                                <th>
-                                    Network Name
-                                    <i class="bi bi-question-circle text-muted ms-1" 
-                                       data-bs-toggle="tooltip" 
-                                       data-bs-title="The name of the subnet this device was found on, as configured in Network Management."
-                                       style="cursor: help;"></i>
-                                </th>
-                                <th>
-                                    VLAN
-                                    <i class="bi bi-question-circle text-muted ms-1" 
-                                       data-bs-toggle="tooltip" 
-                                       data-bs-title="The Virtual LAN ID associated with this network segment, if configured."
-                                       style="cursor: help;"></i>
-                                </th>
+                                <th>IP Address</th>
+                                <th>MAC Address</th>
+                                <th>Hostname</th>
+                                <th>Device Type</th>
+                                <th>Network Name</th>
+                                <th>VLAN</th>
                                 <th class="text-end">Actions</th>
                             </tr>
                         </thead>
@@ -389,8 +492,6 @@ $(document).ready(function() {
         })
     })
 
-    // FIXED: Initialize tooltip for Add This Machine button specifically 
-    // to avoid conflict with data-bs-toggle="modal"
     var addMachineBtn = document.getElementById('addThisMachineBtn');
     if (addMachineBtn) {
         new bootstrap.Tooltip(addMachineBtn, {
@@ -400,7 +501,21 @@ $(document).ready(function() {
         });
     }
 
+    // Initialize DataTables for both tables
+    let historyTable = null;
     let discoveryTable = null;
+
+    // 1. Initialize Scan History Table with Pagination
+    if ($('#scanHistoryTable').length > 0) {
+        historyTable = $('#scanHistoryTable').DataTable({
+            order: [[0, 'desc']], // Sort by Scan ID descending
+            pageLength: 10,       // Show 10 results per page
+            language: {
+                search: "Filter scan history:",
+                emptyTable: "No scans have been run yet."
+            }
+        });
+    }
 
     $('#runScanBtn').on('click', function() {
         const $btn = $(this);
@@ -410,13 +525,11 @@ $(document).ready(function() {
         const $empty = $('#emptyState');
         const $results = $('#resultsContainer');
 
-        // Reset UI
         $error.addClass('d-none').text('');
         $status.removeClass('d-none');
         $statusText.text('Scanning configured networks... This may take up to 30 seconds.');
         $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Scanning...');
 
-        // Send AJAX request
         $.ajax({
             url: 'discover.php',
             type: 'POST',
@@ -468,7 +581,6 @@ $(document).ready(function() {
                         }
                     });
                     
-                    // Re-initialize tooltips for dynamically added rows
                     var newTooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
                     newTooltipTriggerList.map(function (tooltipTriggerEl) {
                         return new bootstrap.Tooltip(tooltipTriggerEl, {
@@ -477,14 +589,40 @@ $(document).ready(function() {
                         })
                     });
 
+                    // 2. Update Scan History Table dynamically using DataTables API
+                    const now = new Date();
+                    const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                    const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                    
+                    const historyRow = `
+                        <tr>
+                            <td data-order="${response.scan_id}">#${response.scan_id}</td>
+                            <td>${dateStr}, ${timeStr}</td>
+                            <td>${timeStr}</td>
+                            <td>1</td>
+                            <td>${response.devices.length}</td>
+                            <td><span class="badge bg-success">Completed</span></td>
+                        </tr>
+                    `;
+                    
+                    if (historyTable) {
+                        // Add the new row to the DataTable and redraw
+                        historyTable.row.add($(historyRow)).draw();
+                    }
+
                 } else {
                     $status.addClass('d-none');
-                    $error.removeClass('d-none').text('Error: ' + response.error);
+                    let errorMsg = response.error;
+                    if (response.raw_output || response.output) {
+                        errorMsg += "<br><small class='text-muted'>Debug: " + (response.raw_output || response.output) + "</small>";
+                    }
+                    $error.removeClass('d-none').html('Error: ' + errorMsg);
                 }
             },
             error: function(xhr, status, error) {
                 $status.addClass('d-none');
                 $error.removeClass('d-none').text('AJAX Request Failed: ' + error);
+                console.error('AJAX Error:', xhr.responseText);
             },
             complete: function() {
                 $btn.prop('disabled', false).html('<i class="bi bi-radar me-1"></i> Run ARP/Ping Scan');

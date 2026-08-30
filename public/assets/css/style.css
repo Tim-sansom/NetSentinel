@@ -1,41 +1,513 @@
-/* --- Force Solid Block Colors for Badges --- */
-.badge {
-    opacity: 1 !important;
-    border: none !important;
-    font-weight: 600 !important;
+/* =========================================
+   NetSentinel Global Styles
+   Theme: Liquid Glass Cyber (Fully Responsive)
+   ========================================= */
+
+/* 1. Define Theme Variables */
+:root {
+    --ns-bg: #f8f9fa;
+    --ns-bg-darker: #e9ecef;
+    --ns-glass-bg: rgba(255, 255, 255, 0.75);
+    --ns-glass-border: rgba(0, 0, 0, 0.1);
+    --ns-text-primary: #212529;
+    --ns-text-secondary: #6c757d;
+    --ns-accent-cyan: #0dcaf0;
+    --ns-accent-emerald: #198754;
+    --ns-accent-rose: #dc3545;
+    --ns-accent-violet: #6f42c1;
 }
 
-.badge.bg-danger { 
-    background-color: #dc3545 !important; /* Solid Red */
-    color: #ffffff !important; 
-}
-.badge.bg-warning { 
-    background-color: #ffc107 !important; /* Solid Yellow */
-    color: #000000 !important; /* Black text for readability on yellow */
-}
-.badge.bg-info { 
-    background-color: #0dcaf0 !important; /* Solid Cyan/Blue */
-    color: #000000 !important; /* Black text for readability on light blue */
-}
-.badge.bg-secondary { 
-    background-color: #6c757d !important; /* Solid Grey */
-    color: #ffffff !important; 
-}
-.badge.bg-primary { 
-    background-color: #0d6efd !important; /* Solid Blue */
-    color: #ffffff !important; 
-}
-/* Tooltip icon styling */
-[data-bs-toggle="tooltip"] {
-    cursor: help;
-    transition: color 0.2s;
+[data-bs-theme="dark"] {
+    --ns-bg: #0f172a;
+    --ns-bg-darker: #020617;
+    --ns-glass-bg: rgba(255, 255, 255, 0.03);
+    --ns-glass-border: rgba(255, 255, 255, 0.08);
+    --ns-text-primary: #f8fafc;
+    --ns-text-secondary: #94a3b8;
+    --ns-accent-cyan: #06b6d4;
+    --ns-accent-emerald: #10b981;
+    --ns-accent-rose: #f43f5e;
+    --ns-accent-violet: #8b5cf6;
 }
 
-[data-bs-toggle="tooltip"]:hover {
-    color: #0d6efd !important; /* Bootstrap primary blue on hover */
+/* 2. Base Styles & Fluid Typography */
+body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: var(--ns-bg);
+    color: var(--ns-text-primary);
+    transition: background-color 0.3s ease, color 0.3s ease;
+    overflow-x: hidden; /* Prevent horizontal scroll on mobile */
 }
 
-/* Make tooltip icons slightly smaller in tables */
-th [data-bs-toggle="tooltip"] {
-    font-size: 0.85em;
+p, .text-secondary {
+    color: var(--ns-text-secondary) !important;
+    text-wrap: pretty; /* Better line breaking for readability */
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    color: var(--ns-text-primary);
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+}
+
+/* 3. Landing Page - Force Dark Theme */
+.landing-page {
+    --ns-bg: #0f172a !important;
+    --ns-bg-darker: #020617 !important;
+    --ns-glass-bg: rgba(255, 255, 255, 0.03) !important;
+    --ns-glass-border: rgba(255, 255, 255, 0.08) !important;
+    --ns-text-primary: #f8fafc !important;
+    --ns-text-secondary: #94a3b8 !important;
+    --ns-accent-cyan: #06b6d4 !important;
+    --ns-accent-emerald: #10b981 !important;
+    --ns-accent-rose: #f43f5e !important;
+    --ns-accent-violet: #8b5cf6 !important;
+    background-color: var(--ns-bg) !important;
+    color: var(--ns-text-primary) !important;
+}
+
+/* 4. Ambient Animations (Scoped to Landing Page) */
+.landing-page .ambient-bg {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1;
+    background: radial-gradient(circle at 20% 30%, rgba(6, 182, 212, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(139, 92, 246, 0.1) 0%, transparent 50%);
+    animation: ambientPulse 15s ease-in-out infinite; pointer-events: none;
+}
+@keyframes ambientPulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.8; transform: scale(1.05); } }
+
+.landing-page .network-mesh { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; opacity: 0.3; pointer-events: none; }
+.landing-page .mesh-node { position: absolute; width: 4px; height: 4px; background: var(--ns-accent-cyan); border-radius: 50%; box-shadow: 0 0 10px var(--ns-accent-cyan); animation: float 20s infinite ease-in-out; }
+@keyframes float { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(100px, -50px); } 50% { transform: translate(-50px, 100px); } 75% { transform: translate(100px, 50px); } }
+
+/* 5. Navigation & Glassmorphic Hamburger Menu */
+.landing-page .navbar {
+    background: rgba(15, 23, 42, 0.8) !important;
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--ns-glass-border);
+    padding: 1rem 0;
+}
+.landing-page .navbar-brand {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 1.5rem;
+    background: linear-gradient(135deg, var(--ns-accent-cyan), var(--ns-accent-emerald));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.landing-page .nav-link {
+    color: var(--ns-text-secondary) !important;
+    font-weight: 500;
+    padding: 0.75rem 1rem !important;
+    transition: color 0.3s ease;
+}
+.landing-page .nav-link:hover { color: var(--ns-accent-cyan) !important; }
+
+.landing-page .navbar-collapse {
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(16px);
+    border-radius: 12px;
+    margin-top: 1rem;
+    padding: 1.5rem;
+    border: 1px solid var(--ns-glass-border);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+.landing-page .navbar-toggler { border-color: rgba(255, 255, 255, 0.2); }
+.landing-page .navbar-toggler-icon { filter: invert(1); }
+
+/* 6. Hero Section & Fluid Typography */
+.landing-page .hero {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    padding: 120px 0 60px;
+}
+.landing-page .hero h1 {
+    font-size: clamp(2.5rem, 5vw, 4.5rem);
+    margin-bottom: 1.5rem;
+}
+.landing-page .hero-subtitle {
+    font-size: clamp(1rem, 2vw, 1.25rem);
+    max-width: 700px;
+    margin-bottom: 2.5rem;
+}
+.landing-page .gradient-text {
+    background: linear-gradient(135deg, var(--ns-accent-cyan), var(--ns-accent-emerald));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* 7. Buttons (Touch-friendly) */
+.landing-page .btn {
+    padding: 0.75rem 1.5rem;
+    border-radius: 12px;
+    font-weight: 600;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+.landing-page .btn-primary-glow {
+    background: linear-gradient(135deg, var(--ns-accent-cyan), var(--ns-accent-violet));
+    border: none; color: white;
+}
+.landing-page .btn-primary-glow:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px rgba(6, 182, 212, 0.4);
+    color: white;
+}
+.landing-page .btn-glass {
+    background: var(--ns-glass-bg);
+    border: 1px solid var(--ns-glass-border);
+    color: var(--ns-text-primary);
+}
+.landing-page .btn-glass:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--ns-accent-cyan);
+    color: var(--ns-text-primary);
+}
+
+/* 8. Glass Cards & Features Grid */
+.glass-card {
+    background: var(--ns-glass-bg);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--ns-glass-border);
+    border-radius: 16px;
+    padding: 1.5rem;
+    transition: all 0.3s ease;
+    height: 100%;
+}
+.glass-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.landing-page .feature-icon {
+    width: 50px; height: 50px;
+    background: linear-gradient(135deg, var(--ns-accent-cyan), var(--ns-accent-violet));
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem; margin-bottom: 1rem;
+    transition: transform 0.3s ease;
+}
+.landing-page .feature-icon i { color: white !important; }
+.glass-card:hover .feature-icon { transform: scale(1.1) rotate(5deg); }
+
+/* 9. Cost Comparison & Sections */
+.landing-page .section-padding { padding: clamp(3rem, 6vw, 6rem) 0; }
+.landing-page .section-header h2 { font-size: clamp(2rem, 4vw, 3rem); margin-bottom: 1rem; text-align: center; }
+.landing-page .section-header p { text-align: center; max-width: 600px; margin: 0 auto 3rem; }
+
+.landing-page .cost-comparison {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--ns-glass-border);
+    border-radius: 20px;
+    padding: clamp(1.5rem, 3vw, 2.5rem);
+}
+.landing-page .cost-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 1.25rem; margin: 1rem 0;
+    background: var(--ns-glass-bg); border-radius: 12px;
+    border: 1px solid var(--ns-glass-border);
+    transition: all 0.3s ease;
+}
+.landing-page .cost-item:hover { transform: translateX(5px); }
+.landing-page .cost-item.enterprise { border-left: 4px solid var(--ns-accent-rose); }
+.landing-page .cost-item.netsentinel { border-left: 4px solid var(--ns-accent-emerald); background: rgba(16, 185, 129, 0.1); }
+.landing-page .price-tag { font-size: clamp(1.5rem, 2.5vw, 2rem); font-weight: 700; }
+.landing-page .price-tag.enterprise { color: var(--ns-accent-rose); }
+.landing-page .price-tag.netsentinel { color: var(--ns-accent-emerald); }
+
+/* 10. Architecture Diagram */
+.landing-page .arch-diagram {
+    display: flex; align-items: center; justify-content: center;
+    gap: 2rem; padding: 3rem 1rem; flex-wrap: wrap;
+}
+.landing-page .arch-box {
+    background: var(--ns-glass-bg); border: 2px solid var(--ns-glass-border);
+    border-radius: 16px; padding: 2rem; text-align: center;
+    min-width: 200px; flex: 1; max-width: 300px;
+    transition: all 0.3s ease;
+}
+.landing-page .arch-box:hover { border-color: var(--ns-accent-cyan); transform: translateY(-5px); }
+.landing-page .arch-arrow { font-size: 2rem; color: var(--ns-accent-cyan); animation: pulse 2s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+/* 11. Stats & Footer */
+.landing-page .stat-number {
+    font-size: clamp(1.75rem, 3vw, 2.5rem);
+    background: linear-gradient(135deg, var(--ns-accent-cyan), var(--ns-accent-emerald));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    font-weight: 700; display: block;
+}
+.landing-page footer {
+    border-top: 1px solid var(--ns-glass-border);
+    padding: 3rem 0; text-align: center; color: var(--ns-text-secondary);
+}
+.landing-page .footer-links { display: flex; justify-content: center; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 2rem; }
+.landing-page .footer-links a { color: var(--ns-text-secondary); text-decoration: none; transition: color 0.3s ease; }
+.landing-page .footer-links a:hover { color: var(--ns-accent-cyan); }
+
+/* =========================================
+   SOC Dashboard Layout (Sidebar + Topbar)
+   ========================================= */
+
+body.app-layout {
+    display: flex;
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+/* Collapsible Sidebar */
+.sidebar {
+    width: 70px;
+    background: var(--ns-bg-darker);
+    border-right: 1px solid var(--ns-glass-border);
+    display: flex;
+    flex-direction: column;
+    padding-top: 1rem;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: fixed;
+    height: 100vh;
+    z-index: 1000;
+    overflow: hidden;
+}
+
+.sidebar:hover {
+    width: 240px;
+    box-shadow: 5px 0 25px rgba(0,0,0,0.2);
+}
+
+.sidebar .nav-link {
+    display: flex;
+    align-items: center;
+    padding: 0.85rem 1.25rem;
+    color: var(--ns-text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    transition: all 0.2s ease;
+    border-left: 3px solid transparent;
+    text-decoration: none;
+}
+
+.sidebar .nav-link:hover, 
+.sidebar .nav-link.active {
+    color: var(--ns-accent-cyan);
+    background: rgba(6, 182, 212, 0.05);
+    border-left-color: var(--ns-accent-cyan);
+}
+
+.sidebar .nav-link i {
+    font-size: 1.25rem;
+    min-width: 30px;
+    text-align: center;
+    transition: transform 0.2s ease;
+}
+
+.sidebar .nav-link:hover i {
+    transform: scale(1.1);
+}
+
+.sidebar .nav-link span {
+    margin-left: 1rem;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    font-weight: 500;
+}
+
+.sidebar:hover .nav-link span {
+    opacity: 1;
+    transition-delay: 0.1s; /* Prevents flickering */
+}
+
+/* Main Content Area */
+.main-content {
+    flex: 1;
+    margin-left: 70px;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background: var(--ns-bg);
+    transition: margin-left 0.3s ease;
+}
+
+/* Minimal Top Header */
+.top-header {
+    background: var(--ns-glass-bg);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--ns-glass-border);
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 900;
+}
+
+.top-header .brand-text {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 1.25rem;
+    color: var(--ns-text-primary);
+    display: flex;
+    align-items: center;
+}
+
+/* Dark Mode Header Text Fix (Electric Cyan) */
+[data-bs-theme="dark"] .card {
+    background-color: var(--ns-glass-bg);
+    border-color: var(--ns-glass-border);
+    color: var(--ns-text-primary);
+}
+
+[data-bs-theme="dark"] .card-header {
+    background: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid var(--ns-glass-border);
+    color: var(--ns-text-primary);
+}
+
+[data-bs-theme="dark"] .card-header h5, 
+[data-bs-theme="dark"] .card-header h6,
+[data-bs-theme="dark"] .section-header h2,
+[data-bs-theme="dark"] .card-header h3,
+[data-bs-theme="dark"] .card-header h4 {
+    color: var(--ns-accent-cyan) !important;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+[data-bs-theme="dark"] .table { color: var(--ns-text-primary); }
+[data-bs-theme="dark"] .table thead th { color: var(--ns-text-secondary); border-bottom-color: var(--ns-glass-border); }
+[data-bs-theme="dark"] .table tbody tr:hover { background-color: rgba(255, 255, 255, 0.03); }
+[data-bs-theme="dark"] .dropdown-menu { background-color: var(--ns-bg-darker); border-color: var(--ns-glass-border); }
+[data-bs-theme="dark"] .dropdown-item { color: var(--ns-text-primary); }
+[data-bs-theme="dark"] .dropdown-item:hover { background-color: rgba(255, 255, 255, 0.05); color: var(--ns-accent-cyan); }
+
+/* Footer inside Main Content */
+.app-footer {
+    margin-top: auto;
+    padding: 2rem;
+    text-align: center;
+    color: var(--ns-text-secondary);
+    border-top: 1px solid var(--ns-glass-border);
+    font-size: 0.875rem;
+    background: var(--ns-bg);
+}
+
+/* =========================================
+   Global Utilities & Overrides
+   ========================================= */
+
+/* Badges */
+.badge { opacity: 1 !important; border: none !important; font-weight: 600 !important; }
+.badge.bg-danger { background-color: #dc3545 !important; color: #fff !important; }
+.badge.bg-warning { background-color: #ffc107 !important; color: #000 !important; }
+.badge.bg-info { background-color: #0dcaf0 !important; color: #000 !important; }
+.badge.bg-secondary { background-color: #6c757d !important; color: #fff !important; }
+.badge.bg-primary { background-color: #0d6efd !important; color: #fff !important; }
+.badge.bg-success { background-color: #198754 !important; color: #fff !important; }
+
+/* Tooltips */
+[data-bs-toggle="tooltip"] { cursor: help; transition: color 0.2s; }
+[data-bs-toggle="tooltip"]:hover { color: var(--ns-accent-cyan) !important; }
+th [data-bs-toggle="tooltip"] { font-size: 0.85em; }
+
+/* Custom Scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--ns-bg); }
+::-webkit-scrollbar-thumb { background: var(--ns-glass-border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ns-accent-cyan); }
+
+/* =========================================
+   Responsive Breakpoints
+   ========================================= */
+
+/* Mobile Phones (< 576px) */
+@media (max-width: 575.98px) {
+    .landing-page .hero { text-align: center; padding-top: 100px; }
+    .landing-page .hero-cta { justify-content: center; }
+    .landing-page .mt-5.d-flex { justify-content: center; }
+    .landing-page .cost-item { flex-direction: column; text-align: center; gap: 1rem; }
+    .landing-page .arch-diagram { flex-direction: column; }
+    .landing-page .arch-arrow { transform: rotate(90deg); margin: 0.5rem 0; }
+    .landing-page .arch-box { max-width: 100%; }
+    
+    .sidebar { width: 0; border: none; }
+    .sidebar:hover { width: 240px; border-right: 1px solid var(--ns-glass-border); box-shadow: 5px 0 25px rgba(0,0,0,0.5); }
+    .main-content { margin-left: 0; }
+}
+
+/* Tablets (576px - 992px) */
+@media (min-width: 576px) and (max-width: 991.98px) {
+    .landing-page .hero h1 { font-size: 3.5rem; }
+}
+
+/* Large Desktops & TVs (> 1400px) */
+@media (min-width: 1400px) {
+    .container-xxl { max-width: 1600px; }
+    .landing-page .hero h1 { font-size: 5rem; }
+    .landing-page .section-header h2 { font-size: 3.5rem; }
+}
+/* =========================================
+   Custom Error Pages (404, 403, 500)
+   ========================================= */
+.error-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    text-align: center;
+    padding: 2rem;
+}
+
+.error-card {
+    background: var(--ns-glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--ns-glass-border);
+    border-radius: 24px;
+    padding: clamp(2rem, 5vw, 4rem);
+    max-width: 600px;
+    width: 100%;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+    position: relative;
+    z-index: 10;
+}
+
+.error-code {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: clamp(6rem, 15vw, 10rem);
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 1rem;
+    letter-spacing: -0.05em;
+}
+
+/* Specific Gradients for Error Types */
+.error-404 .error-code {
+    background: linear-gradient(135deg, var(--ns-accent-cyan), var(--ns-accent-emerald));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.error-403 .error-code {
+    background: linear-gradient(135deg, var(--ns-accent-rose), var(--ns-accent-violet));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.error-500 .error-code {
+    background: linear-gradient(135deg, var(--ns-accent-violet), var(--ns-accent-rose));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.error-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.8;
 }

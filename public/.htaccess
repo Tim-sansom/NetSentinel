@@ -1,0 +1,7 @@
+# Custom Error Pages
+ErrorDocument 404 /404.php
+ErrorDocument 403 /403.php
+ErrorDocument 500 /500.php
+
+# Enable Rewrite Engine (Useful for clean URLs later)
+RewriteEngine On
