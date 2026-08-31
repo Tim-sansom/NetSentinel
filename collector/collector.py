@@ -8,9 +8,13 @@ state, then submits the findings to the backend API.
 Designed specifically for environments where the agent runs inside a 
 Docker container (hence the default API URL pointing to 'dashboard:80'),
 or as a lightweight standalone script using the 'schedule' library.
+
+SECURITY NOTE: Requires explicit API_TOKEN and DEVICE_ID environment variables.
+Fails fast if missing to prevent insecure default configurations (OWASP A05).
 """
 
 import os
+import sys  # Added for sys.exit(1) on critical configuration failures
 import time
 import json
 import logging
@@ -24,13 +28,19 @@ from datetime import datetime
 
 # --- Configuration ---
 # Default API URL points to the internal Docker network name of the dashboard service.
+# (Safe fallback for local Docker development, but can be overridden via ENV)
 API_URL = os.getenv("API_URL", "http://dashboard:80/api/submit.php")
 
-# CRITICAL FIX 1: Read the API Token from the environment (passed via docker-compose.yml)
-API_TOKEN = os.getenv("API_TOKEN", "NetSentinel2026!")
+# SECURITY: Strict validation to prevent insecure default fallbacks (OWASP A05)
+API_TOKEN = os.getenv("API_TOKEN")
+if not API_TOKEN:
+    logging.critical("CRITICAL: API_TOKEN environment variable is not set. Aborting to prevent insecure default authentication.")
+    sys.exit(1)
 
-# Use a static ID for the lab environment to ensure it matches the database record
-DEVICE_ID = os.getenv("DEVICE_ID", "agent-001") 
+DEVICE_ID = os.getenv("DEVICE_ID")
+if not DEVICE_ID:
+    logging.critical("CRITICAL: DEVICE_ID environment variable is not set. Aborting.")
+    sys.exit(1)
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
@@ -108,6 +118,7 @@ class FirewallCheck:
                     enabled = True
                 profile = "UFW"
             elif os_type == "Windows":
+                # CREATE_NO_WINDOW prevents a console window from flashing on Windows
                 result = subprocess.run(['netsh', 'advfirewall', 'show', 'currentprofile'], capture_output=True, text=True, timeout=5, creationflags=subprocess.CREATE_NO_WINDOW)
                 if 'State' in result.stdout and 'ON' in result.stdout.upper():
                     enabled = True
@@ -136,7 +147,7 @@ class HealthCheckRunner:
     def __init__(self, device_id: str, api_url: str, api_token: str):
         self.device_id = device_id
         self.api_url = api_url
-        self.api_token = api_token # Store the token
+        self.api_token = api_token
 
     def run_checks(self):
         logging.info(f"Starting security health check for {self.device_id}...")
@@ -147,7 +158,7 @@ class HealthCheckRunner:
         firewall = FirewallCheck.run()
         
         # 2. Construct Payload
-        # CRITICAL FIX 2: Format payload to exactly match what submit.php expects
+        # Format payload to exactly match what submit.php expects
         payload = {
             "device_uuid": self.device_id,
             "timestamp": datetime.now().isoformat(),
@@ -175,7 +186,7 @@ class HealthCheckRunner:
         
         # 3. Submit to PHP API
         try:
-            # CRITICAL FIX 3: Add the Authorization Bearer token to the headers
+            # Add the Authorization Bearer token to the headers
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self.api_token}"
@@ -203,7 +214,7 @@ def main():
     """
     logging.info("NetSentinel Agent (Collector) starting...")
     
-    # Pass the API_TOKEN to the runner
+    # Pass the validated API_TOKEN to the runner
     runner = HealthCheckRunner(device_id=DEVICE_ID, api_url=API_URL, api_token=API_TOKEN)
     
     # Run once immediately on startup
@@ -219,4 +230,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main()  

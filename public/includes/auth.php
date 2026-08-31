@@ -21,9 +21,12 @@ if (session_status() === PHP_SESSION_NONE) {
     // 3. Reject uninitialized session IDs to prevent session fixation attacks
     ini_set('session.use_strict_mode', 1);
     
-    // 4. Enforce HTTPS for cookies in production. 
-    // (Set to 0 for local HTTP development, CHANGE TO 1 for production HTTPS)
-    ini_set('session.cookie_secure', 0);
+    // 4. Enforce HTTPS for cookies in production, but allow HTTP for local development.
+    // This dynamically checks if the request is served over HTTPS (or via a reverse proxy like Cloudflare).
+    $is_https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || 
+                (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+    
+    ini_set('session.cookie_secure', $is_https ? 1 : 0);
     
     // NOW start the session with hardened settings
     session_start();
@@ -66,17 +69,20 @@ function requireLogin(): void {
 }
 
 /**
- * Ensures the logged-in user has the 'admin' role.
+ * Ensures the logged-in user has the 'admin' or 'super_admin' role.
  * Must be called AFTER requireLogin().
  * 
- * SECURITY: Uses strtolower() to prevent authorization bypass if the DB 
+ * SECURITY: Uses strtolower() to prevent authorisation bypass if the DB 
  * stores roles as "Admin" instead of "admin" (Fixes D-023).
  */
 function requireAdmin(): void {
     requireLogin();
-    if (!isset($_SESSION['role']) || strtolower($_SESSION['role']) !== 'admin') {
+    $role = strtolower($_SESSION['role'] ?? '');
+    
+    // CRITICAL FIX: Allow both tenant admins and the platform super admin
+    if ($role !== 'admin' && $role !== 'super_admin') {
         http_response_code(403);
-        die('<div class="container mt-4"><div class="alert alert-danger">Access denied. Admin privileges required.</div></div>');
+        die('<div class="container mt-4"><div class="alert alert-danger">Access denied. Administrator privileges required.</div></div>');
     }
 }
 

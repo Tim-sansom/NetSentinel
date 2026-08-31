@@ -1,4 +1,14 @@
 <?php
+/**
+ * NetSentinel Database Connection Handler
+ * Establishes a secure PDO connection to the MySQL database.
+ * 
+ * SECURITY NOTE: Credentials are strictly loaded from environment variables.
+ * The script fails fast if required credentials are missing, preventing 
+ * insecure default fallbacks (OWASP A05: Security Misconfiguration).
+ */
+
+// 1. Environment Configuration & Error Reporting
 // Only show errors if we are in the development environment (Docker)
 if (getenv('NETSENTINEL_ENV') === 'development') {
     error_reporting(E_ALL);
@@ -9,22 +19,27 @@ if (getenv('NETSENTINEL_ENV') === 'development') {
     ini_set('display_errors', 0);
     ini_set('log_errors', 1);
 }
-/**
- * NetSentinel Database Connection Handler
- * Establishes a secure PDO connection to the MySQL database.
- */
 
-// 1. Secure Configuration via Environment Variables
+// 2. Secure Configuration via Environment Variables
 // Fulfills 12-Factor App methodology: credentials are never hardcoded in source control.
-$host = getenv('DB_HOST') ?: 'mysql';
-$db   = getenv('DB_NAME') ?: 'netsentinel';
-$user = getenv('DB_USER') ?: 'netsentinel_user';
-$pass = getenv('DB_PASS') ?: 'AgentPassword123!';
+$host = getenv('DB_HOST') ?: 'mysql'; // Safe fallback for local Docker network name
+$db   = getenv('DB_NAME');
+$user = getenv('DB_USER');
+$pass = getenv('DB_PASS');
 $charset = 'utf8mb4'; // utf8mb4 supports full Unicode (emojis, special chars) safely
+
+// SECURITY: Strict validation to prevent insecure default fallbacks (OWASP A05)
+if (empty($db) || empty($user) || empty($pass)) {
+    error_log("CRITICAL: Database credentials (DB_NAME, DB_USER, or DB_PASS) are missing from environment variables.");
+    http_response_code(500);
+    // Generic message to prevent leaking configuration details to the client
+    echo json_encode(["status" => "error", "message" => "Critical configuration error: Database credentials missing."]);
+    exit;
+}
 
 $dsn = "mysql:host=$host;dbname=$db;charset=$charset";
 
-// 2. PDO Security Attributes (CRITICAL for SR3)
+// 3. PDO Security Attributes (CRITICAL for SR3)
 $options = [
     // Force PDO to throw exceptions on SQL errors, preventing silent failures
     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
