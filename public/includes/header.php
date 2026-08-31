@@ -10,7 +10,9 @@ $page_title = $page_title ?? 'Dashboard';
 $is_logged_in = isset($_SESSION['user_id']);
 
 // SECURITY (SR2): Case-insensitive role check. 
-$is_admin = $is_logged_in && isset($_SESSION['role']) && strtolower($_SESSION['role']) === 'admin';
+// FIX: Allow both 'admin' and 'super_admin' to see admin navigation links.
+$current_role = strtolower($_SESSION['role'] ?? '');
+$is_admin = $is_logged_in && ($current_role === 'admin' || $current_role === 'super_admin');
 
 // SECURITY (XSS Prevention): Always sanitize user data before outputting to HTML.
 $username = htmlspecialchars($_SESSION['username'] ?? 'User');
@@ -135,4 +137,4 @@ $role = htmlspecialchars($_SESSION['role'] ?? 'viewer');
 
         <!-- Page Content Wrapper (Right-Hand Frame) -->
         <!-- WCAG: Added id="main-content" for the skip link, and fixed the broken </main></main> -->
-        <main id="main-content" class="container-fluid p-4">
+        <main id="main-content" class="container-fluid p-4"></main>

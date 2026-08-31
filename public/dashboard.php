@@ -113,12 +113,12 @@ $time_ranges = [
 ];
 $selected_range = $time_ranges[$time_range] ?? $time_ranges['7d'];
 
-// --- SECURITY: Data Isolation Logic (Row-Level Security) ---
-$is_admin = (strtolower($_SESSION['role'] ?? '') === 'admin');
-$user_group_id = $_SESSION['group_id'] ?? null;
+// SECURITY: Allow both tenant admins and super admins to see all data
+$current_role = strtolower($_SESSION['role'] ?? '');
+$is_admin = ($current_role === 'admin' || $current_role === 'super_admin');
 
 // --- 1. INITIALIZE ALL VARIABLES TO SAFE DEFAULTS ---
-$total_devices = 0; $active_devices = 0; $at_risk_devices = 0; $    _score = 100;
+$total_devices = 0; $active_devices = 0; $at_risk_devices = 0; $health_score = 100;
 $total_devices_trend = 0; $active_trend = 0; $at_risk_trend = 0;
 $agents_online = 0; $agents_offline = 0;
 $os_data = []; $severity_data = []; $top_ports_data = []; $trend_data = [];
