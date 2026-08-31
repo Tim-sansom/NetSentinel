@@ -22,3 +22,8 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Configuration files with sensitive data
+includes/smtp_config.php
+config/smtp_config.php
+*.local.php

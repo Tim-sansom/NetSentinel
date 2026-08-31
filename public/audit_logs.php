@@ -8,10 +8,12 @@
  * This page demonstrates GDPR-compliant audit logging (SR4) with proper 
  * data minimization - user accounts are anonymized upon deletion while 
  * preserving the security audit trail for compliance and incident response.
+ * 
+ * SECURITY NOTE: Implements Row-Level Security (RLS) to ensure tenant admins
+ * only see audit logs for users within their own organization.
  */
 
 // SECURITY: Start session IMMEDIATELY before ANY file inclusion.
-// This prevents "headers already sent" errors when we need to redirect to login.php.
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -25,9 +27,13 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-// SECURITY (SR3): Strict case-insensitive role check.
-// Prevents authorization bypass if the database stores the role as "Admin" instead of "admin" (Fixes D-023).
-if (strtolower($_SESSION['role'] ?? '') !== 'admin') {
+// --- SECURITY: Determine user's access scope ---
+$is_super_admin = (strtolower($_SESSION['role'] ?? '') === 'super_admin');
+$is_tenant_admin = (strtolower($_SESSION['role'] ?? '') === 'admin');
+$user_group_id = $_SESSION['group_id'] ?? null;
+
+// Only admins can access this page
+if (!$is_super_admin && !$is_tenant_admin) {
     http_response_code(403);
     die('<div class="container mt-4"><div class="alert alert-danger">Access denied. Admin privileges required.</div></div>');
 }
@@ -35,24 +41,64 @@ if (strtolower($_SESSION['role'] ?? '') !== 'admin') {
 $page_title = 'Audit Logs';
 require_once __DIR__ . '/includes/header.php';
 
-// GDPR COMPLIANCE (Right to Erasure): 
-// We use a LEFT JOIN so that if a user is deleted from the 'user' table, 
-// their historical actions are preserved in the audit trail but anonymized as 'Unknown User'.
-// This satisfies data minimization without breaking the security audit chain.
-$stmt = $pdo->query("
-    SELECT 
-        al.created_at AS timestamp,
-        COALESCE(u.username, 'Unknown User') as username,
-        al.action,
-        al.target_type,
-        al.target_id,
-        al.ip_address,
-        al.user_agent
-    FROM audit_log al
-    LEFT JOIN user u ON al.user_id = u.user_id
-    ORDER BY al.created_at DESC
-");
-$logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+// ============================================================================
+// FETCH AUDIT LOGS WITH ROW-LEVEL SECURITY
+// ============================================================================
+if ($is_super_admin) {
+    // Super admin sees ALL audit logs across all organizations
+    $stmt = $pdo->query("
+        SELECT 
+            al.created_at AS timestamp,
+            COALESCE(u.username, 'Unknown User') as username,
+            al.action,
+            al.target_type,
+            al.target_id,
+            al.ip_address,
+            al.user_agent
+        FROM audit_log al
+        LEFT JOIN user u ON al.user_id = u.user_id
+        ORDER BY al.created_at DESC
+    ");
+    $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} else {
+    // Tenant admin ONLY sees audit logs relevant to their organization
+    if ($user_group_id) {
+        $stmt = $pdo->prepare("
+            SELECT 
+                al.created_at AS timestamp,
+                COALESCE(u.username, 'Unknown User') as username,
+                al.action,
+                al.target_type,
+                al.target_id,
+                al.ip_address,
+                al.user_agent
+            FROM audit_log al
+            LEFT JOIN user u ON al.user_id = u.user_id
+            WHERE 
+                -- Show logs where the acting user is in this tenant's group
+                (u.group_id = ?)
+                OR
+                -- Show logs where target is a device in this tenant's group
+                (al.target_type = 'device' AND al.target_id IN (
+                    SELECT device_id FROM device WHERE device_group_id = ?
+                ))
+                OR
+                -- Show logs where target is a user in this tenant's group
+                (al.target_type = 'user' AND al.target_id IN (
+                    SELECT user_id FROM user WHERE group_id = ?
+                ))
+                OR
+                -- Show logs where target is a group in this tenant's scope
+                (al.target_type = 'device_group' AND al.target_id = ?)
+            ORDER BY al.created_at DESC
+        ");
+        $stmt->execute([$user_group_id, $user_group_id, $user_group_id, $user_group_id]);
+        $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        // Tenant admin without group sees no audit logs
+        $logs = [];
+    }
+}
 ?>
 
 <div class="container-fluid mt-4">
@@ -79,7 +125,7 @@ $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
         </div>
     </div>
 
-    <!-- Info Banner - What is this page? -->
+    <!-- Info Banner -->
     <div class="alert alert-info d-flex align-items-start mb-4" role="alert">
         <i class="bi bi-info-circle-fill me-3 mt-1 fs-5"></i>
         <div>
@@ -120,7 +166,13 @@ $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <?php if (empty($logs)): ?>
                 <div class="text-center py-5">
                     <i class="bi bi-journal-x display-4 text-muted"></i>
-                    <p class="text-muted mb-0 mt-3">No audit events recorded yet.</p>
+                    <p class="text-muted mb-0 mt-3">
+                        <?php if ($is_super_admin): ?>
+                            No audit events recorded yet.
+                        <?php else: ?>
+                            No audit events found for your organization.
+                        <?php endif; ?>
+                    </p>
                 </div>
             <?php else: ?>
                 <div class="table-responsive">

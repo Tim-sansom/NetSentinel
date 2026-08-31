@@ -3,12 +3,15 @@
  * NetSentinel Main Dashboard (Overview)
  * The central command center for SME administrators.
  * Features an interactive Cytoscape.js network map, real-time KPIs, 
- * and a dense grid of dynamic Chart.js visualizations.
+ * and a dense grid of dynamic Chart.js visualisations.
  * 
  * ACADEMIC NOTE FOR MARKERS:
  * This page demonstrates the core value proposition of NetSentinel: 
  * transforming raw telemetry into actionable, visual situational awareness 
  * for non-technical SME admins, satisfying FRD1, FRD3, and NFR1.
+ * 
+ * SECURITY NOTE: Implements Row-Level Security (RLS) to ensure standard 
+ * users only see telemetry for devices assigned to their specific group_id.
  */
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/auth.php';
@@ -19,6 +22,9 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'refresh_topology') {
     header('Content-Type: application/json');
     
     try {
+        $is_admin = (strtolower($_SESSION['role'] ?? '') === 'admin');
+        $user_group_id = $_SESSION['group_id'] ?? null;
+        
         $latest_scan_id = $pdo->query("SELECT scan_id FROM network_scan WHERE status = 'completed' ORDER BY scan_id DESC LIMIT 1")->fetchColumn();
         $networks = $pdo->query("SELECT network_id, name, cidr FROM networks")->fetchAll(PDO::FETCH_ASSOC);
         
@@ -32,8 +38,18 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'refresh_topology') {
         }
         
         if ($latest_scan_id) {
-            $map_stmt = $pdo->prepare("SELECT * FROM network_scan_result WHERE scan_id = ?");
-            $map_stmt->execute([$latest_scan_id]);
+            if ($is_admin) {
+                $map_stmt = $pdo->prepare("SELECT * FROM network_scan_result WHERE scan_id = ?");
+                $map_stmt->execute([$latest_scan_id]);
+            } else {
+                // SECURITY: Only show devices in the topology that belong to the user's group
+                $map_stmt = $pdo->prepare("
+                    SELECT nsr.* FROM network_scan_result nsr
+                    INNER JOIN device d ON (nsr.hostname = d.hostname OR nsr.ip_address = d.ip_address)
+                    WHERE nsr.scan_id = ? AND d.device_group_id = ?
+                ");
+                $map_stmt->execute([$latest_scan_id, $user_group_id]);
+            }
             $devices = $map_stmt->fetchAll(PDO::FETCH_ASSOC);
             
             foreach ($devices as $dev) {
@@ -97,8 +113,12 @@ $time_ranges = [
 ];
 $selected_range = $time_ranges[$time_range] ?? $time_ranges['7d'];
 
+// --- SECURITY: Data Isolation Logic (Row-Level Security) ---
+$is_admin = (strtolower($_SESSION['role'] ?? '') === 'admin');
+$user_group_id = $_SESSION['group_id'] ?? null;
+
 // --- 1. INITIALIZE ALL VARIABLES TO SAFE DEFAULTS ---
-$total_devices = 0; $active_devices = 0; $at_risk_devices = 0; $health_score = 100;
+$total_devices = 0; $active_devices = 0; $at_risk_devices = 0; $    _score = 100;
 $total_devices_trend = 0; $active_trend = 0; $at_risk_trend = 0;
 $agents_online = 0; $agents_offline = 0;
 $os_data = []; $severity_data = []; $top_ports_data = []; $trend_data = [];
@@ -111,33 +131,44 @@ $latest_scan_label = "No Scan Data";
 
 try {
     // === KPI: Total Devices ===
-    $total_devices = $pdo->query("SELECT COUNT(*) FROM device")->fetchColumn();
-    try {
-        $total_devices_prev = $pdo->query("SELECT COUNT(DISTINCT device_id) FROM check_run WHERE run_timestamp < DATE_SUB(NOW(), INTERVAL {$selected_range['interval']})")->fetchColumn();
-        $total_devices_trend = $total_devices_prev > 0 ? round((($total_devices - $total_devices_prev) / $total_devices_prev) * 100) : 0;
-    } catch (Exception $e) { $total_devices_trend = 0; }
+    if ($is_admin) {
+        $total_devices = $pdo->query("SELECT COUNT(*) FROM device")->fetchColumn();
+    } else {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM device WHERE device_group_id = ?");
+        $stmt->execute([$user_group_id]);
+        $total_devices = (int)$stmt->fetchColumn();
+    }
 
     // === KPI: Active Devices (24h) ===
-    $active_devices = $pdo->query("SELECT COUNT(*) FROM device WHERE last_seen_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)")->fetchColumn();
-    try {
-        $active_prev = $pdo->query("SELECT COUNT(DISTINCT device_id) FROM check_run WHERE run_timestamp >= DATE_SUB(NOW(), INTERVAL 48 HOUR) AND run_timestamp < DATE_SUB(NOW(), INTERVAL 24 HOUR)")->fetchColumn();
-        $active_trend = $active_prev > 0 ? round((($active_devices - $active_prev) / $active_prev) * 100) : 0;
-    } catch (Exception $e) { $active_trend = 0; }
+    if ($is_admin) {
+        $active_devices = $pdo->query("SELECT COUNT(*) FROM device WHERE last_seen_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)")->fetchColumn();
+    } else {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM device WHERE device_group_id = ? AND last_seen_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)");
+        $stmt->execute([$user_group_id]);
+        $active_devices = (int)$stmt->fetchColumn();
+    }
 
     // === KPI: At Risk Devices ===
-    try {
-        $at_risk_devices = $pdo->query("SELECT COUNT(DISTINCT d.device_id) FROM device d INNER JOIN check_run cr ON d.device_id = cr.device_id INNER JOIN port_finding pf ON cr.check_run_id = pf.check_run_id WHERE cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL {$selected_range['interval']}) AND pf.severity IN ('critical', 'high')")->fetchColumn();
-    } catch (Exception $e) { $at_risk_devices = 0; }
+    if ($is_admin) {
+        $at_risk_query = "SELECT COUNT(DISTINCT d.device_id) FROM device d INNER JOIN check_run cr ON d.device_id = cr.device_id INNER JOIN port_finding pf ON cr.check_run_id = pf.check_run_id WHERE cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL {$selected_range['interval']}) AND pf.severity IN ('critical', 'high')";
+        $at_risk_devices = $pdo->query($at_risk_query)->fetchColumn();
+    } else {
+        $at_risk_query = "SELECT COUNT(DISTINCT d.device_id) FROM device d INNER JOIN check_run cr ON d.device_id = cr.device_id INNER JOIN port_finding pf ON cr.check_run_id = pf.check_run_id WHERE d.device_group_id = ? AND cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL {$selected_range['interval']}) AND pf.severity IN ('critical', 'high')";
+        $stmt = $pdo->prepare($at_risk_query);
+        $stmt->execute([$user_group_id]);
+        $at_risk_devices = (int)$stmt->fetchColumn();
+    }
     
-    try {
-        $at_risk_prev = $pdo->query("SELECT COUNT(DISTINCT d.device_id) FROM device d INNER JOIN check_run cr ON d.device_id = cr.device_id INNER JOIN port_finding pf ON cr.check_run_id = pf.check_run_id WHERE cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL 14 DAY) AND cr.run_timestamp < DATE_SUB(NOW(), INTERVAL 7 DAY) AND pf.severity IN ('critical', 'high')")->fetchColumn();
-        $at_risk_trend = $at_risk_prev > 0 ? round((($at_risk_devices - $at_risk_prev) / $at_risk_prev) * 100) : 0;
-    } catch (Exception $e) { $at_risk_trend = 0; }
-
     $health_score = $total_devices > 0 ? round((($total_devices - $at_risk_devices) / $total_devices) * 100) : 100;
 
     // === AGENT STATUS ===
-    $agents_online = $pdo->query("SELECT COUNT(*) FROM device WHERE last_seen_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)")->fetchColumn();
+    if ($is_admin) {
+        $agents_online = $pdo->query("SELECT COUNT(*) FROM device WHERE last_seen_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)")->fetchColumn();
+    } else {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM device WHERE device_group_id = ? AND last_seen_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)");
+        $stmt->execute([$user_group_id]);
+        $agents_online = (int)$stmt->fetchColumn();
+    }
     $agents_offline = max(0, $total_devices - $agents_online);
 
     // === TOPOLOGY MAP DATA ===
@@ -145,41 +176,46 @@ try {
     $latest_scan_id = $pdo->query("SELECT scan_id FROM network_scan WHERE status = 'completed' ORDER BY scan_id DESC LIMIT 1")->fetchColumn();
     $networks = $pdo->query("SELECT network_id, name, cidr FROM networks")->fetchAll(PDO::FETCH_ASSOC);
     
-    // 1. Core Node
     $cy_elements[] = ['data' => ['id' => 'core', 'label' => 'NetSentinel Core', 'type' => 'core']];
     
-    // 2. Network Subnet Nodes
     foreach ($networks as $net) {
         $net_id = 'net_'.$net['network_id'];
         $cy_elements[] = ['data' => ['id' => $net_id, 'label' => $net['name'], 'type' => 'network']];
         $cy_elements[] = ['data' => ['source' => 'core', 'target' => $net_id]];
     }
     
-    // 3. Device Nodes (from latest scan)
     if ($latest_scan_id) {
         $latest_scan_label = "Scan #{$latest_scan_id}";
-        $map_stmt = $pdo->prepare("SELECT * FROM network_scan_result WHERE scan_id = ?");
-        $map_stmt->execute([$latest_scan_id]);
+        
+        if ($is_admin) {
+            $map_stmt = $pdo->prepare("SELECT * FROM network_scan_result WHERE scan_id = ?");
+            $map_stmt->execute([$latest_scan_id]);
+        } else {
+            $map_stmt = $pdo->prepare("
+                SELECT nsr.* FROM network_scan_result nsr
+                INNER JOIN device d ON (nsr.hostname = d.hostname OR nsr.ip_address = d.ip_address)
+                WHERE nsr.scan_id = ? AND d.device_group_id = ?
+            ");
+            $map_stmt->execute([$latest_scan_id, $user_group_id]);
+        }
         $devices = $map_stmt->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($devices as $dev) {
             $dev_id = 'dev_'.$dev['result_id'];
             $type = strtolower($dev['device_type'] ?? 'unknown');
             
-            // Smart Styling based on Device Type
-            $shape = 'ellipse'; $color = '#6c757d'; // Default Grey Circle
+            $shape = 'ellipse'; $color = '#6c757d';
             
             if (strpos($type, 'router') !== false || strpos($type, 'gateway') !== false) {
-                $shape = 'hexagon'; $color = '#0d6efd'; // Blue Hexagon
+                $shape = 'hexagon'; $color = '#0d6efd';
             } elseif (strpos($type, 'linux') !== false || strpos($type, 'pi') !== false) {
-                $shape = 'ellipse'; $color = '#198754'; // Green Circle
+                $shape = 'ellipse'; $color = '#198754';
             } elseif (strpos($type, 'windows') !== false) {
-                $shape = 'rectangle'; $color = '#0dcaf0'; // Cyan Square
+                $shape = 'rectangle'; $color = '#0dcaf0';
             } elseif (strpos($type, 'apple') !== false) {
-                $shape = 'triangle'; $color = '#6f42c1'; // Purple Triangle
+                $shape = 'triangle'; $color = '#6f42c1';
             }
 
-            // Auto-route to correct subnet based on IP prefix
             $target_net = 'core';
             foreach ($networks as $net) {
                 $net_prefix = substr($net['cidr'], 0, strrpos($net['cidr'], '.')); 
@@ -204,46 +240,94 @@ try {
     $cy_json = json_encode($cy_elements);
 
     // === CHART: OS Distribution ===
-    $os_data = $pdo->query("SELECT os_family, COUNT(*) as count FROM device WHERE os_family IS NOT NULL GROUP BY os_family")->fetchAll(PDO::FETCH_ASSOC);
+    if ($is_admin) {
+        $os_data = $pdo->query("SELECT os_family, COUNT(*) as count FROM device WHERE os_family IS NOT NULL GROUP BY os_family")->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        $stmt = $pdo->prepare("SELECT os_family, COUNT(*) as count FROM device WHERE os_family IS NOT NULL AND device_group_id = ? GROUP BY os_family");
+        $stmt->execute([$user_group_id]);
+        $os_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 
     // === CHART: Alert Severity ===
-    try {
-        $severity_data = $pdo->query("SELECT pf.severity, COUNT(*) as count FROM port_finding pf INNER JOIN check_run cr ON pf.check_run_id = cr.check_run_id WHERE cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL {$selected_range['interval']}) GROUP BY pf.severity")->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) { $severity_data = []; }
+    if ($is_admin) {
+        $severity_query = "SELECT pf.severity, COUNT(*) as count FROM port_finding pf INNER JOIN check_run cr ON pf.check_run_id = cr.check_run_id WHERE cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL {$selected_range['interval']}) GROUP BY pf.severity";
+        $severity_data = $pdo->query($severity_query)->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        $severity_query = "SELECT pf.severity, COUNT(*) as count FROM port_finding pf INNER JOIN check_run cr ON pf.check_run_id = cr.check_run_id INNER JOIN device d ON cr.device_id = d.device_id WHERE d.device_group_id = ? AND cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL {$selected_range['interval']}) GROUP BY pf.severity";
+        $stmt = $pdo->prepare($severity_query);
+        $stmt->execute([$user_group_id]);
+        $severity_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 
     // === CHART: Top Risky Ports ===
-    try {
-        $top_ports_data = $pdo->query("SELECT pf.port_number, COUNT(*) as count FROM port_finding pf INNER JOIN check_run cr ON pf.check_run_id = cr.check_run_id WHERE cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL {$selected_range['interval']}) AND pf.severity IN ('high', 'critical') GROUP BY pf.port_number ORDER BY count DESC LIMIT 5")->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) { $top_ports_data = []; }
+    if ($is_admin) {
+        $ports_query = "SELECT pf.port_number, COUNT(*) as count FROM port_finding pf INNER JOIN check_run cr ON pf.check_run_id = cr.check_run_id WHERE cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL {$selected_range['interval']}) AND pf.severity IN ('high', 'critical') GROUP BY pf.port_number ORDER BY count DESC LIMIT 5";
+        $top_ports_data = $pdo->query($ports_query)->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        $ports_query = "SELECT pf.port_number, COUNT(*) as count FROM port_finding pf INNER JOIN check_run cr ON pf.check_run_id = cr.check_run_id INNER JOIN device d ON cr.device_id = d.device_id WHERE d.device_group_id = ? AND cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL {$selected_range['interval']}) AND pf.severity IN ('high', 'critical') GROUP BY pf.port_number ORDER BY count DESC LIMIT 5";
+        $stmt = $pdo->prepare($ports_query);
+        $stmt->execute([$user_group_id]);
+        $top_ports_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 
     // === CHART: Threat Trends ===
-    try {
-        $time_format = ($time_range === '24h') ? 'HOUR' : 'DATE';
-        $trend_data = $pdo->query("SELECT {$time_format}(cr.run_timestamp) as time_period, COUNT(*) as alert_count FROM port_finding pf INNER JOIN check_run cr ON pf.check_run_id = cr.check_run_id WHERE pf.severity IN ('critical', 'high') AND cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL {$selected_range['interval']}) GROUP BY {$time_format}(cr.run_timestamp) ORDER BY time_period ASC")->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) { $trend_data = []; }
+    $time_format = ($time_range === '24h') ? 'HOUR' : 'DATE';
+    if ($is_admin) {
+        $trend_query = "SELECT {$time_format}(cr.run_timestamp) as time_period, COUNT(*) as alert_count FROM port_finding pf INNER JOIN check_run cr ON pf.check_run_id = cr.check_run_id WHERE pf.severity IN ('critical', 'high') AND cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL {$selected_range['interval']}) GROUP BY {$time_format}(cr.run_timestamp) ORDER BY time_period ASC";
+        $trend_data = $pdo->query($trend_query)->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        $trend_query = "SELECT {$time_format}(cr.run_timestamp) as time_period, COUNT(*) as alert_count FROM port_finding pf INNER JOIN check_run cr ON pf.check_run_id = cr.check_run_id INNER JOIN device d ON cr.device_id = d.device_id WHERE d.device_group_id = ? AND pf.severity IN ('critical', 'high') AND cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL {$selected_range['interval']}) GROUP BY {$time_format}(cr.run_timestamp) ORDER BY time_period ASC";
+        $stmt = $pdo->prepare($trend_query);
+        $stmt->execute([$user_group_id]);
+        $trend_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 
     // === CHART: Hourly Heatmap ===
     if ($time_range === '24h') {
-        try {
-            $hourly_raw = $pdo->query("SELECT HOUR(run_timestamp) as hour, COUNT(*) as count FROM check_run WHERE run_timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR) GROUP BY HOUR(run_timestamp)")->fetchAll(PDO::FETCH_ASSOC);
-            foreach ($hourly_raw as $row) { if (isset($row['hour'])) $hourly_data[(int)$row['hour']] = $row['count']; }
-        } catch (Exception $e) { /* Keep default zeros */ }
+        if ($is_admin) {
+            $hourly_query = "SELECT HOUR(run_timestamp) as hour, COUNT(*) as count FROM check_run WHERE run_timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR) GROUP BY HOUR(run_timestamp)";
+            $hourly_raw = $pdo->query($hourly_query)->fetchAll(PDO::FETCH_ASSOC);
+        } else {
+            $hourly_query = "SELECT HOUR(cr.run_timestamp) as hour, COUNT(*) as count FROM check_run cr INNER JOIN device d ON cr.device_id = d.device_id WHERE d.device_group_id = ? AND cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR) GROUP BY HOUR(cr.run_timestamp)";
+            $stmt = $pdo->prepare($hourly_query);
+            $stmt->execute([$user_group_id]);
+            $hourly_raw = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+        foreach ($hourly_raw as $row) { if (isset($row['hour'])) $hourly_data[(int)$row['hour']] = $row['count']; }
     }
 
     // === CHART: Top 10 Targeted Devices ===
-    try {
-        $top_devices_data = $pdo->query("SELECT d.hostname, d.ip_address, COUNT(pf.port_finding_id) as finding_count FROM device d INNER JOIN check_run cr ON d.device_id = cr.device_id INNER JOIN port_finding pf ON cr.check_run_id = pf.check_run_id WHERE cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL {$selected_range['interval']}) AND pf.severity IN ('critical', 'high') GROUP BY d.device_id ORDER BY finding_count DESC LIMIT 10")->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) { $top_devices_data = []; }
+    if ($is_admin) {
+        $top_dev_query = "SELECT d.hostname, d.ip_address, COUNT(pf.port_finding_id) as finding_count FROM device d INNER JOIN check_run cr ON d.device_id = cr.device_id INNER JOIN port_finding pf ON cr.check_run_id = pf.check_run_id WHERE cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL {$selected_range['interval']}) AND pf.severity IN ('critical', 'high') GROUP BY d.device_id, d.hostname, d.ip_address ORDER BY finding_count DESC LIMIT 10";
+        $top_devices_data = $pdo->query($top_dev_query)->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        $top_dev_query = "SELECT d.hostname, d.ip_address, COUNT(pf.port_finding_id) as finding_count FROM device d INNER JOIN check_run cr ON d.device_id = cr.device_id INNER JOIN port_finding pf ON cr.check_run_id = pf.check_run_id WHERE d.device_group_id = ? AND cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL {$selected_range['interval']}) AND pf.severity IN ('critical', 'high') GROUP BY d.device_id, d.hostname, d.ip_address ORDER BY finding_count DESC LIMIT 10";
+        $stmt = $pdo->prepare($top_dev_query);
+        $stmt->execute([$user_group_id]);
+        $top_devices_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 
     // === CHART: Network Activity ===
-    try {
-        $network_activity = $pdo->query("SELECT DATE(run_timestamp) as date, COUNT(*) as checks FROM check_run WHERE run_timestamp >= DATE_SUB(NOW(), INTERVAL {$selected_range['interval']}) GROUP BY DATE(run_timestamp) ORDER BY date ASC")->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) { $network_activity = []; }
+    if ($is_admin) {
+        $net_query = "SELECT DATE(run_timestamp) as date, COUNT(*) as checks FROM check_run WHERE run_timestamp >= DATE_SUB(NOW(), INTERVAL {$selected_range['interval']}) GROUP BY DATE(run_timestamp) ORDER BY date ASC";
+        $network_activity = $pdo->query($net_query)->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        $net_query = "SELECT DATE(cr.run_timestamp) as date, COUNT(*) as checks FROM check_run cr INNER JOIN device d ON cr.device_id = d.device_id WHERE d.device_group_id = ? AND cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL {$selected_range['interval']}) GROUP BY DATE(cr.run_timestamp) ORDER BY date ASC";
+        $stmt = $pdo->prepare($net_query);
+        $stmt->execute([$user_group_id]);
+        $network_activity = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 
     // === TABLE: Recent Alerts ===
-    try {
-        $recent_alerts = $pdo->query("SELECT d.hostname, d.device_id, cr.run_timestamp, CONCAT('Port ', pf.port_number, ' (', COALESCE(pf.process_name, 'Unknown'), ')') as detail, pf.severity FROM port_finding pf INNER JOIN check_run cr ON pf.check_run_id = cr.check_run_id INNER JOIN device d ON cr.device_id = d.device_id WHERE cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL {$selected_range['interval']}) ORDER BY cr.run_timestamp DESC LIMIT 10")->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) { $recent_alerts = []; }
+    if ($is_admin) {
+        $alerts_query = "SELECT d.hostname, d.device_id, cr.run_timestamp, CONCAT('Port ', pf.port_number, ' (', COALESCE(pf.process_name, 'Unknown'), ')') as detail, pf.severity FROM port_finding pf INNER JOIN check_run cr ON pf.check_run_id = cr.check_run_id INNER JOIN device d ON cr.device_id = d.device_id WHERE cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL {$selected_range['interval']}) ORDER BY cr.run_timestamp DESC LIMIT 10";
+        $recent_alerts = $pdo->query($alerts_query)->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        $alerts_query = "SELECT d.hostname, d.device_id, cr.run_timestamp, CONCAT('Port ', pf.port_number, ' (', COALESCE(pf.process_name, 'Unknown'), ')') as detail, pf.severity FROM port_finding pf INNER JOIN check_run cr ON pf.check_run_id = cr.check_run_id INNER JOIN device d ON cr.device_id = d.device_id WHERE d.device_group_id = ? AND cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL {$selected_range['interval']}) ORDER BY cr.run_timestamp DESC LIMIT 10";
+        $stmt = $pdo->prepare($alerts_query);
+        $stmt->execute([$user_group_id]);
+        $recent_alerts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 
 } catch (PDOException $e) {
     error_log("Dashboard DB Error: " . $e->getMessage());
@@ -272,21 +356,24 @@ $network_counts = json_encode(array_column($network_activity, 'checks'));
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
             <h2 class="mb-0">
-                <i class="bi bi-speedometer2 me-2"></i>Security Overview
-                <i class="bi bi-question-circle text-muted ms-2" data-bs-toggle="tooltip" data-bs-title="Real-time situational awareness of your entire endpoint fleet" style="cursor: help; font-size: 0.6em; vertical-align: middle;"></i>
+                <i class="bi bi-speedometer2 me-2" aria-hidden="true"></i>Security Overview
+                <i class="bi bi-question-circle text-muted ms-2" data-bs-toggle="tooltip" data-bs-title="Real-time situational awareness of your entire endpoint fleet" style="cursor: help; font-size: 0.6em; vertical-align: middle;" role="img" aria-label="Help"></i>
             </h2>
             <p class="text-muted mb-0 mt-1">
                 Network topology, health metrics, and active threat indicators
-                <span class="ms-3 text-muted small"><i class="bi bi-clock"></i> Last updated: <?= $last_updated ?></span>
+                <span class="ms-3 text-muted small"><i class="bi bi-clock" aria-hidden="true"></i> Last updated: <?= $last_updated ?></span>
             </p>
         </div>
         <div class="d-flex align-items-center gap-3">
-            <div class="btn-group" role="group">
+            <div class="btn-group" role="group" aria-label="Time range selector">
                 <a href="?range=24h" class="btn btn-sm btn-outline-<?= $time_range === '24h' ? 'primary' : 'secondary' ?>">24h</a>
                 <a href="?range=7d" class="btn btn-sm btn-outline-<?= $time_range === '7d' ? 'primary' : 'secondary' ?>">7d</a>
                 <a href="?range=30d" class="btn btn-sm btn-outline-<?= $time_range === '30d' ? 'primary' : 'secondary' ?>">30d</a>
             </div>
-            <button class="btn btn-sm btn-primary" onclick="location.reload()" data-bs-toggle="tooltip" data-bs-title="Refresh dashboard"><i class="bi bi-arrow-clockwise"></i></button>
+            <!-- WCAG FIX: Added aria-label for icon-only button -->
+            <button class="btn btn-sm btn-primary" onclick="location.reload()" data-bs-toggle="tooltip" data-bs-title="Refresh dashboard" aria-label="Refresh dashboard">
+                <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+            </button>
         </div>
     </div>
 
@@ -299,11 +386,11 @@ $network_counts = json_encode(array_column($network_activity, 'checks'));
                 <div class="card-body py-3">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <h6 class="text-white-50 text-uppercase small mb-1">Total Devices</h6>
+                            <!-- WCAG FIX: Changed h6 to span as this is a visual label, not a heading -->
+                            <span class="text-white-50 text-uppercase small mb-1 d-block">Total Devices</span>
                             <h2 class="mb-0 fw-bold"><?= $total_devices ?></h2>
-                            <?php if ($total_devices_trend != 0): ?><small class="<?= $total_devices_trend > 0 ? 'text-success' : 'text-danger' ?>"><i class="bi bi-arrow-<?= $total_devices_trend > 0 ? 'up' : 'down' ?>"></i> <?= abs($total_devices_trend) ?>%</small><?php endif; ?>
                         </div>
-                        <i class="bi bi-laptop display-6 text-white-50"></i>
+                        <i class="bi bi-laptop display-6 text-white-50" aria-hidden="true"></i>
                     </div>
                 </div>
             </div>
@@ -313,11 +400,10 @@ $network_counts = json_encode(array_column($network_activity, 'checks'));
                 <div class="card-body py-3">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <h6 class="text-white-50 text-uppercase small mb-1">Active (24h)</h6>
+                            <span class="text-white-50 text-uppercase small mb-1 d-block">Active (24h)</span>
                             <h2 class="mb-0 fw-bold"><?= $active_devices ?></h2>
-                            <?php if ($active_trend != 0): ?><small class="<?= $active_trend > 0 ? 'text-success' : 'text-danger' ?>"><i class="bi bi-arrow-<?= $active_trend > 0 ? 'up' : 'down' ?>"></i> <?= abs($active_trend) ?>%</small><?php endif; ?>
                         </div>
-                        <i class="bi bi-check-circle display-6 text-white-50"></i>
+                        <i class="bi bi-check-circle display-6 text-white-50" aria-hidden="true"></i>
                     </div>
                 </div>
             </div>
@@ -327,11 +413,10 @@ $network_counts = json_encode(array_column($network_activity, 'checks'));
                 <div class="card-body py-3">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <h6 class="text-white-50 text-uppercase small mb-1">At Risk</h6>
+                            <span class="text-white-50 text-uppercase small mb-1 d-block">At Risk</span>
                             <h2 class="mb-0 fw-bold"><?= $at_risk_devices ?></h2>
-                            <?php if ($at_risk_trend != 0): ?><small class="<?= $at_risk_trend < 0 ? 'text-success' : 'text-danger' ?>"><i class="bi bi-arrow-<?= $at_risk_trend < 0 ? 'down' : 'up' ?>"></i> <?= abs($at_risk_trend) ?>%</small><?php endif; ?>
                         </div>
-                        <i class="bi bi-exclamation-triangle display-6 text-white-50"></i>
+                        <i class="bi bi-exclamation-triangle display-6 text-white-50" aria-hidden="true"></i>
                     </div>
                 </div>
             </div>
@@ -341,10 +426,10 @@ $network_counts = json_encode(array_column($network_activity, 'checks'));
                 <div class="card-body py-3">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <h6 class="text-white-50 text-uppercase small mb-1">Health Score</h6>
+                            <span class="text-white-50 text-uppercase small mb-1 d-block">Health Score</span>
                             <h2 class="mb-0 fw-bold"><?= $health_score ?>%</h2>
                         </div>
-                        <i class="bi bi-activity display-6 text-white-50"></i>
+                        <i class="bi bi-activity display-6 text-white-50" aria-hidden="true"></i>
                     </div>
                 </div>
             </div>
@@ -355,24 +440,25 @@ $network_counts = json_encode(array_column($network_activity, 'checks'));
     <div class="row mb-3">
         <div class="col-12">
             <div class="card shadow-sm">
-                <div class="card-header bg-white py-2"><h6 class="mb-0 text-muted"><i class="bi bi-hdd-network me-2"></i>Agent Status</h6></div>
+                <!-- WCAG FIX: Changed h6 to h3 with fs-6 to maintain visual size but fix heading hierarchy -->
+                <div class="card-header bg-white py-2"><h3 class="mb-0 text-muted fs-6 fw-semibold"><i class="bi bi-hdd-network me-2" aria-hidden="true"></i>Agent Status</h3></div>
                 <div class="card-body py-3">
                     <div class="row">
                         <div class="col-md-4">
                             <div class="d-flex align-items-center">
-                                <div class="display-4 me-3"><i class="bi bi-check-circle-fill text-success"></i></div>
+                                <div class="display-4 me-3"><i class="bi bi-check-circle-fill text-success" aria-hidden="true"></i></div>
                                 <div><h4 class="mb-0"><?= $agents_online ?></h4><small class="text-muted">Agents Online</small></div>
                             </div>
                         </div>
                         <div class="col-md-4">
                             <div class="d-flex align-items-center">
-                                <div class="display-4 me-3"><i class="bi bi-x-circle-fill text-secondary"></i></div>
+                                <div class="display-4 me-3"><i class="bi bi-x-circle-fill text-secondary" aria-hidden="true"></i></div>
                                 <div><h4 class="mb-0"><?= $agents_offline ?></h4><small class="text-muted">Agents Offline</small></div>
                             </div>
                         </div>
                         <div class="col-md-4">
                             <div class="d-flex align-items-center">
-                                <div class="display-4 me-3"><i class="bi bi-shield-fill text-primary"></i></div>
+                                <div class="display-4 me-3"><i class="bi bi-shield-fill text-primary" aria-hidden="true"></i></div>
                                 <div><h4 class="mb-0"><?= $total_devices > 0 ? round(($agents_online / $total_devices) * 100) : 0 ?>%</h4><small class="text-muted">Coverage</small></div>
                             </div>
                         </div>
@@ -387,15 +473,15 @@ $network_counts = json_encode(array_column($network_activity, 'checks'));
         <div class="col-12">
             <div class="card shadow-sm">
                 <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center flex-wrap">
-                    <h6 class="mb-0 text-muted">
-                        <i class="bi bi-diagram-3 me-2"></i>Live Network Topology
+                    <h3 class="mb-0 text-muted fs-6 fw-semibold">
+                        <i class="bi bi-diagram-3 me-2" aria-hidden="true"></i>Live Network Topology
                         <span class="badge bg-secondary ms-2" style="font-size: 0.7em;"><?= htmlspecialchars($latest_scan_label) ?></span>
-                    </h6>
+                    </h3>
                     <div class="d-flex flex-wrap gap-2 mt-2 mt-md-0 small">
-                        <span class="badge bg-light text-dark border"><i class="bi bi-hexagon-fill text-primary me-1"></i> Router/Gateway</span>
-                        <span class="badge bg-light text-dark border"><i class="bi bi-circle-fill text-success me-1"></i> Linux/Pi</span>
-                        <span class="badge bg-light text-dark border"><i class="bi bi-square-fill text-info me-1"></i> Windows</span>
-                        <span class="badge bg-light text-dark border"><i class="bi bi-triangle-fill me-1" style="color: #6f42c1;"></i> Apple</span>
+                        <span class="badge bg-light text-dark border"><i class="bi bi-hexagon-fill text-primary me-1" aria-hidden="true"></i> Router/Gateway</span>
+                        <span class="badge bg-light text-dark border"><i class="bi bi-circle-fill text-success me-1" aria-hidden="true"></i> Linux/Pi</span>
+                        <span class="badge bg-light text-dark border"><i class="bi bi-square-fill text-info me-1" aria-hidden="true"></i> Windows</span>
+                        <span class="badge bg-light text-dark border"><i class="bi bi-triangle-fill me-1" style="color: #6f42c1;" aria-hidden="true"></i> Apple</span>
                     </div>
                 </div>
                 <div class="card-body p-0">
@@ -410,19 +496,19 @@ $network_counts = json_encode(array_column($network_activity, 'checks'));
         <!-- Row 1 -->
         <div class="col-md-4 mb-3">
             <div class="card shadow-sm h-100">
-                <div class="card-header bg-white py-2"><h6 class="mb-0 text-muted"><i class="bi bi-pie-chart me-2"></i>OS Fleet Composition</h6></div>
+                <div class="card-header bg-white py-2"><h3 class="mb-0 text-muted fs-6 fw-semibold"><i class="bi bi-pie-chart me-2" aria-hidden="true"></i>OS Fleet Composition</h3></div>
                 <div class="card-body d-flex justify-content-center align-items-center" style="height: 250px;"><canvas id="osChart"></canvas></div>
             </div>
         </div>
         <div class="col-md-4 mb-3">
             <div class="card shadow-sm h-100">
-                <div class="card-header bg-white py-2"><h6 class="mb-0 text-muted"><i class="bi bi-shield-exclamation me-2"></i>Alert Severity</h6></div>
+                <div class="card-header bg-white py-2"><h3 class="mb-0 text-muted fs-6 fw-semibold"><i class="bi bi-shield-exclamation me-2" aria-hidden="true"></i>Alert Severity</h3></div>
                 <div class="card-body d-flex justify-content-center align-items-center" style="height: 250px;"><canvas id="severityChart"></canvas></div>
             </div>
         </div>
         <div class="col-md-4 mb-3">
             <div class="card shadow-sm h-100">
-                <div class="card-header bg-white py-2"><h6 class="mb-0 text-muted"><i class="bi bi-bar-chart me-2"></i>Top 5 Risky Ports</h6></div>
+                <div class="card-header bg-white py-2"><h3 class="mb-0 text-muted fs-6 fw-semibold"><i class="bi bi-bar-chart me-2" aria-hidden="true"></i>Top 5 Risky Ports</h3></div>
                 <div class="card-body d-flex justify-content-center align-items-center" style="height: 250px;"><canvas id="portsChart"></canvas></div>
             </div>
         </div>
@@ -430,13 +516,13 @@ $network_counts = json_encode(array_column($network_activity, 'checks'));
         <!-- Row 2 -->
         <div class="col-md-6 mb-3">
             <div class="card shadow-sm h-100">
-                <div class="card-header bg-white py-2"><h6 class="mb-0 text-muted"><i class="bi bi-graph-up me-2"></i>Threat Trends</h6></div>
+                <div class="card-header bg-white py-2"><h3 class="mb-0 text-muted fs-6 fw-semibold"><i class="bi bi-graph-up me-2" aria-hidden="true"></i>Threat Trends</h3></div>
                 <div class="card-body" style="height: 250px;"><canvas id="trendChart"></canvas></div>
             </div>
         </div>
         <div class="col-md-6 mb-3">
             <div class="card shadow-sm h-100">
-                <div class="card-header bg-white py-2"><h6 class="mb-0 text-muted"><i class="bi bi-clock-history me-2"></i>Hourly Activity Heatmap</h6></div>
+                <div class="card-header bg-white py-2"><h3 class="mb-0 text-muted fs-6 fw-semibold"><i class="bi bi-clock-history me-2" aria-hidden="true"></i>Hourly Activity Heatmap</h3></div>
                 <div class="card-body" style="height: 250px;"><canvas id="hourlyChart"></canvas></div>
             </div>
         </div>
@@ -444,13 +530,13 @@ $network_counts = json_encode(array_column($network_activity, 'checks'));
         <!-- Row 3 -->
         <div class="col-md-4 mb-3">
             <div class="card shadow-sm h-100">
-                <div class="card-header bg-white py-2"><h6 class="mb-0 text-muted"><i class="bi bi-bullseye me-2"></i>Top 10 Targeted Devices</h6></div>
+                <div class="card-header bg-white py-2"><h3 class="mb-0 text-muted fs-6 fw-semibold"><i class="bi bi-bullseye me-2" aria-hidden="true"></i>Top 10 Targeted Devices</h3></div>
                 <div class="card-body" style="height: 250px;"><canvas id="topDevicesChart"></canvas></div>
             </div>
         </div>
         <div class="col-md-4 mb-3">
             <div class="card shadow-sm h-100">
-                <div class="card-header bg-white py-2"><h6 class="mb-0 text-muted"><i class="bi bi-shield-check me-2"></i>Policy Compliance</h6></div>
+                <div class="card-header bg-white py-2"><h3 class="mb-0 text-muted fs-6 fw-semibold"><i class="bi bi-shield-check me-2" aria-hidden="true"></i>Policy Compliance</h3></div>
                 <div class="card-body d-flex flex-column justify-content-center align-items-center" style="height: 250px;">
                     <div class="display-4 fw-bold text-success"><?= $health_score ?>%</div>
                     <p class="text-muted small mb-0">Devices compliant with baseline rules</p>
@@ -460,7 +546,7 @@ $network_counts = json_encode(array_column($network_activity, 'checks'));
         </div>
         <div class="col-md-4 mb-3">
             <div class="card shadow-sm h-100">
-                <div class="card-header bg-white py-2"><h6 class="mb-0 text-muted"><i class="bi bi-diagram-3 me-2"></i>Network Activity</h6></div>
+                <div class="card-header bg-white py-2"><h3 class="mb-0 text-muted fs-6 fw-semibold"><i class="bi bi-diagram-3 me-2" aria-hidden="true"></i>Network Activity</h3></div>
                 <div class="card-body" style="height: 250px;"><canvas id="networkChart"></canvas></div>
             </div>
         </div>
@@ -469,20 +555,23 @@ $network_counts = json_encode(array_column($network_activity, 'checks'));
     <!-- RECENT ALERTS -->
     <div class="card shadow-sm">
         <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
-            <h5 class="mb-0 text-muted"><i class="bi bi-bell me-2"></i>Recent Security Alerts</h5>
-            <a href="alerts.php" class="btn btn-sm btn-primary" data-bs-toggle="tooltip" data-bs-title="View the full history of security alerts">View All Alerts</a>
+            <!-- WCAG FIX: Changed h5 to h3 with fs-5 to maintain visual size but fix heading hierarchy -->
+            <h3 class="mb-0 text-muted fs-5 fw-semibold"><i class="bi bi-bell me-2" aria-hidden="true"></i>Recent Security Alerts</h3>
+            <a href="alerts.php" class="btn btn-sm btn-primary" data-bs-toggle="tooltip" data-bs-title="View the full history of security alerts" aria-label="View all security alerts">
+                <i class="bi bi-bell me-2" aria-hidden="true"></i>View All Alerts
+            </a>
         </div>
         <div class="card-body p-0">
             <?php if (empty($recent_alerts)): ?>
                 <div class="text-center py-5">
-                    <i class="bi bi-shield-check display-4 text-success"></i>
+                    <i class="bi bi-shield-check display-4 text-success" aria-hidden="true"></i>
                     <p class="text-muted mt-3 mb-0">No recent alerts found. All systems appear to be secure.</p>
                 </div>
             <?php else: ?>
                 <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0">
                         <thead class="table-light">
-                            <tr><th>Timestamp</th><th>Device</th><th>Finding</th><th>Severity</th></tr>
+                            <tr><th scope="col">Timestamp</th><th scope="col">Device</th><th scope="col">Finding</th><th scope="col">Severity</th></tr>
                         </thead>
                         <tbody>
                             <?php foreach ($recent_alerts as $alert): 
@@ -541,25 +630,18 @@ $(document).ready(function() {
             }
         });
 
-        // Simple tap interaction for devices
         cy.on('tap', 'node[type="device"]', function(evt){
             alert('Device: ' + evt.target.data('label') + '\nIP: ' + evt.target.data('ip') + '\nOS: ' + evt.target.data('os'));
         });
     }
 
-    // --- AUTO-REFRESH TOPOLOGY EVERY 60 SECONDS ---
     function refreshTopology() {
         fetch('?ajax=refresh_topology')
             .then(response => response.json())
             .then(data => {
                 if (data.success && cy) {
-                    // Clear existing elements
                     cy.elements().remove();
-                    
-                    // Add new elements
                     cy.add(data.elements);
-                    
-                    // Re-run layout
                     cy.layout({
                         name: 'cose',
                         animate: true,
@@ -572,7 +654,6 @@ $(document).ready(function() {
                         padding: 30
                     }).run();
                     
-                    // Update the scan badge
                     const badge = document.querySelector('.badge.bg-secondary');
                     if (badge) {
                         badge.textContent = data.scan_label;
@@ -582,7 +663,6 @@ $(document).ready(function() {
             .catch(error => console.error('Topology refresh failed:', error));
     }
 
-    // Auto-refresh every 60 seconds
     setInterval(refreshTopology, 60000);
 
     // --- CHART.JS VISUALIZATIONS ---

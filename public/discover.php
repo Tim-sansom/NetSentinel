@@ -1,5 +1,5 @@
 <?php
- /**
+/**
  * NetSentinel Network Discovery Page
  * Triggers Python ARP/Ping scan via AJAX and displays
  * live results for agent deployment. Also allows quick 
@@ -8,6 +8,9 @@
  * This page demonstrates secure asynchronous operations (NFR1) using AJAX 
  * to prevent UI blocking during network scans, and strict input validation 
  * (SR3) when executing system commands via escapeshellarg().
+ * 
+ * SECURITY NOTE: Implements Row-Level Security (RLS) to ensure standard 
+ * users only see scan history for their own account.
  */
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -22,6 +25,11 @@ if (!isset($_SESSION['user_id'])) {
     header('Location: login.php');
     exit;
 }
+
+// --- SECURITY: Determine user's access scope ---
+$is_admin = (strtolower($_SESSION['role'] ?? '') === 'admin');
+$current_user_id = $_SESSION['user_id'];
+$user_group_id = $_SESSION['group_id'] ?? null;
 
 // === AJAX HANDLER: Must be at the very top, before any HTML ===
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['trigger_scan'])) {
@@ -51,12 +59,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['trigger_scan'])) {
             exit(0);
         }
 
-        // 2. Create scan session
+        // 2. Create scan session (tied to current user)
         $stmt = $pdo->prepare("INSERT INTO network_scan (user_id, networks_scanned, status) VALUES (?, ?, 'running')");
-        $stmt->execute([$_SESSION['user_id'], count($networks)]);
+        $stmt->execute([$current_user_id, count($networks)]);
         $scan_id = $pdo->lastInsertId();
         
-        file_put_contents($debug_file, "Created scan session ID: $scan_id\n", FILE_APPEND);
+        file_put_contents($debug_file, "Created scan session ID: $scan_id for user: $current_user_id\n", FILE_APPEND);
 
         // 3. Execute Python script
         $script_path = '/var/www/scripts/discovery.py';
@@ -87,13 +95,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['trigger_scan'])) {
                 $devices_saved = 0;
                 foreach ($result as $device) {
                     try {
-                        // Log what we're trying to insert
-                        file_put_contents($debug_file, 
-                            "Attempting to insert: " . json_encode($device) . "\n", 
-                            FILE_APPEND
-                        );
-                        
-                        // Fix VLAN ID: Convert "N/A" or non-numeric values to NULL
                         $vlan_val = $device['vlan_id'] ?? null;
                         if ($vlan_val === 'N/A' || !is_numeric($vlan_val)) {
                             $vlan_val = null;
@@ -116,21 +117,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['trigger_scan'])) {
                         ]);
                         
                         if ($success) {
-                            file_put_contents($debug_file, "✓ SUCCESS: Inserted {$device['ip']}\n", FILE_APPEND);
                             $devices_saved++;
-                        } else {
-                            file_put_contents($debug_file, "✗ FAILED: Insert returned false for {$device['ip']}\n", FILE_APPEND);
                         }
                     } catch (PDOException $e) {
-                        file_put_contents($debug_file, 
-                            "✗ PDO ERROR: " . $e->getMessage() . " for {$device['ip']}\n", 
-                            FILE_APPEND
-                        );
+                        file_put_contents($debug_file, "✗ PDO ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
                     }
                 }
-
-                // Log final count
-                file_put_contents($debug_file, "TOTAL SAVED: $devices_saved out of " . count($result) . "\n", FILE_APPEND);
 
                 // 5. Update scan session
                 $pdo->prepare("UPDATE network_scan SET status = 'completed', scan_completed = NOW(), devices_found = ? WHERE scan_id = ?")
@@ -184,15 +176,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_localhost'])) {
         $os_family = php_uname('s');
         $os_version = php_uname('r');
         
+        // SECURITY: Assign the new localhost device to the user's group (if they have one)
         $stmt = $pdo->prepare("
             INSERT INTO device 
-            (device_uuid, hostname, ip_address, os_family, os_version, token_hash, is_active, created_at)
-            VALUES (?, ?, '127.0.0.1', ?, ?, ?, 1, NOW())
+            (device_uuid, hostname, ip_address, os_family, os_version, token_hash, device_group_id, is_active, created_at)
+            VALUES (?, ?, '127.0.0.1', ?, ?, ?, ?, 1, NOW())
         ");
-        $stmt->execute([$device_uuid, $hostname, $os_family, $os_version, $token_hash]);
+        $stmt->execute([$device_uuid, $hostname, $os_family, $os_version, $token_hash, $user_group_id]);
         
         require_once __DIR__ . '/includes/audit.php';
-        log_audit($pdo, $_SESSION['user_id'], 'DEVICE_ADDED_LOCALHOST', 'device', $pdo->lastInsertId());
+        log_audit($pdo, $current_user_id, 'DEVICE_ADDED_LOCALHOST', 'device', $pdo->lastInsertId());
         
         $message = "Localhost registered successfully! Device UUID: <code>$device_uuid</code>";
         $message_type = 'success';
@@ -203,6 +196,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_localhost'])) {
         $message = 'Error registering localhost: ' . htmlspecialchars($e->getMessage());
         $message_type = 'danger';
     }
+}
+
+// --- SECURITY: Fetch Scan History with Row-Level Security ---
+if ($is_admin) {
+    // Admins see all scan history
+    $scan_history_query = "
+        SELECT ns.*, u.username
+        FROM network_scan ns
+        LEFT JOIN user u ON ns.user_id = u.user_id
+        ORDER BY ns.scan_started DESC
+    ";
+    $scan_history = $pdo->query($scan_history_query)->fetchAll(PDO::FETCH_ASSOC);
+} else {
+    // Standard users ONLY see their own scan history
+    $scan_history_query = "
+        SELECT ns.*, u.username
+        FROM network_scan ns
+        LEFT JOIN user u ON ns.user_id = u.user_id
+        WHERE ns.user_id = ?
+        ORDER BY ns.scan_started DESC
+    ";
+    $stmt = $pdo->prepare($scan_history_query);
+    $stmt->execute([$current_user_id]);
+    $scan_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
 include __DIR__ . '/includes/header.php';
@@ -288,7 +305,6 @@ include __DIR__ . '/includes/header.php';
         </div>
         <div class="card-body">
             <div class="table-responsive">
-                <!-- Table always exists now so DataTables can initialize -->
                 <table class="table table-sm table-hover" id="scanHistoryTable" style="width:100%">
                     <thead>
                         <tr>
@@ -301,35 +317,31 @@ include __DIR__ . '/includes/header.php';
                         </tr>
                     </thead>
                     <tbody>
-                        <?php 
-                        $scan_history = $pdo->query("
-                            SELECT ns.*, u.username
-                            FROM network_scan ns
-                            LEFT JOIN user u ON ns.user_id = u.user_id
-                            ORDER BY ns.scan_started DESC
-                        ")->fetchAll(PDO::FETCH_ASSOC);
-                        
-                        foreach ($scan_history as $scan): 
-                        ?>
-                        <tr>
-                            <!-- data-order ensures numeric sorting works correctly (1, 2, 10 instead of 1, 10, 2) -->
-                            <td data-order="<?= $scan['scan_id'] ?>">#<?= $scan['scan_id'] ?></td>
-                            <td><?= date('d M Y, H:i', strtotime($scan['scan_started'])) ?></td>
-                            <td><?= $scan['scan_completed'] ? date('H:i', strtotime($scan['scan_completed'])) : 'In Progress' ?></td>
-                            <td><?= $scan['networks_scanned'] ?></td>
-                            <td><?= $scan['devices_found'] ?></td>
-                            <td>
-                                <?php
-                                $badge_class = [
-                                    'running' => 'bg-primary',
-                                    'completed' => 'bg-success',
-                                    'failed' => 'bg-danger'
-                                ][$scan['status']] ?? 'bg-secondary';
-                                ?>
-                                <span class="badge <?= $badge_class ?>"><?= ucfirst($scan['status']) ?></span>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
+                        <?php if (empty($scan_history)): ?>
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-3">No scan history found.</td>
+                            </tr>
+                        <?php else: ?>
+                            <?php foreach ($scan_history as $scan): ?>
+                            <tr>
+                                <td data-order="<?= $scan['scan_id'] ?>">#<?= $scan['scan_id'] ?></td>
+                                <td><?= date('d M Y, H:i', strtotime($scan['scan_started'])) ?></td>
+                                <td><?= $scan['scan_completed'] ? date('H:i', strtotime($scan['scan_completed'])) : 'In Progress' ?></td>
+                                <td><?= $scan['networks_scanned'] ?></td>
+                                <td><?= $scan['devices_found'] ?></td>
+                                <td>
+                                    <?php
+                                    $badge_class = [
+                                        'running' => 'bg-primary',
+                                        'completed' => 'bg-success',
+                                        'failed' => 'bg-danger'
+                                    ][$scan['status']] ?? 'bg-secondary';
+                                    ?>
+                                    <span class="badge <?= $badge_class ?>"><?= ucfirst($scan['status']) ?></span>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
                     </tbody>
                 </table>
             </div>
@@ -436,27 +448,24 @@ include __DIR__ . '/includes/header.php';
                 <h6 class="mb-3">1. Download the Agent</h6>
                 <div class="mb-3">
                     <code class="d-block p-2 bg-light border rounded">
-                        git clone https://github.com/yourusername/netsentinel-agent.git<br>
-                        cd netsentinel-agent
+                        git clone https://github.com/Tim-sansom/NetSentinel.git<br>
+                        cd NetSentinel/agent
                     </code>
                 </div>
 
                 <h6 class="mb-3">2. Configure the Agent</h6>
                 <div class="mb-3">
-                    <p class="small text-muted">Create or edit <code>config.py</code>:</p>
-                    <pre class="bg-dark text-light p-3 rounded"><code>API_URL = "https://<?= $_SERVER['HTTP_HOST'] ?>/api/submit.php"
-DEVICE_UUID = "<?= htmlspecialchars($_SESSION['localhost_uuid']) ?>"
-API_TOKEN = "<?= htmlspecialchars($_SESSION['localhost_token']) ?>"
-CHECK_INTERVAL = 300  # 5 minutes
-ENABLE_LOG_CHECK = true
-ENABLE_PORT_CHECK = true
-ENABLE_FIREWALL_CHECK = true</code></pre>
+                    <p class="small text-muted">Create or edit <code>.env</code> in the agent directory:</p>
+                    <pre class="bg-dark text-light p-3 rounded"><code>NETSENTINEL_API_URL="https://<?= $_SERVER['HTTP_HOST'] ?>/api/submit.php"
+NETSENTINEL_DEVICE_UUID="<?= htmlspecialchars($_SESSION['localhost_uuid']) ?>"
+NETSENTINEL_API_TOKEN="<?= htmlspecialchars($_SESSION['localhost_token']) ?>"
+NETSENTINEL_CHECK_INTERVAL=300</code></pre>
                 </div>
 
                 <h6 class="mb-3">3. Install Dependencies</h6>
                 <div class="mb-3">
                     <code class="d-block p-2 bg-light border rounded">
-                        pip install requests psutil schedule
+                        pip install -r requirements.txt
                     </code>
                 </div>
 
@@ -606,7 +615,6 @@ $(document).ready(function() {
                     `;
                     
                     if (historyTable) {
-                        // Add the new row to the DataTable and redraw
                         historyTable.row.add($(historyRow)).draw();
                     }
 

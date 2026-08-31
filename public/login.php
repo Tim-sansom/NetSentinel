@@ -1,17 +1,13 @@
 <?php
-// 1. Enable errors temporarily for debugging (REMOVE THESE 3 LINES FOR PRODUCTION/SUBMISSION)
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
 
-// 2. SECURITY: Start session immediately
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
 require_once __DIR__ . '/includes/db.php';
 
-// If already logged in, redirect to dashboard to prevent redundant logins
 if (isset($_SESSION['user_id'])) {
     header('Location: dashboard.php');
     exit;
@@ -21,7 +17,6 @@ $error = '';
 $timeout = isset($_GET['timeout']) && $_GET['timeout'] == 1;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Accept either username or email in the first field for better UX
     $login_identifier = trim($_POST['login_identifier'] ?? '');
     $password = $_POST['password'] ?? '';
 
@@ -29,27 +24,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Please enter both your username/email and password.';
     } else {
         try {
-            // SECURITY (SR3): Prepared statement prevents SQL Injection.
-            // Checks against BOTH username and email columns.
-            $stmt = $pdo->prepare("SELECT user_id, username, email, password_hash, role FROM user WHERE username = ? OR email = ?");
+            $stmt = $pdo->prepare("SELECT user_id, username, email, password_hash, role, group_id FROM user WHERE username = ? OR email = ?");
             $stmt->execute([$login_identifier, $login_identifier]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            // SECURITY (SR2): password_verify() is timing-safe, preventing timing attacks.
             if ($user && password_verify($password, $user['password_hash'])) {
-                
-                // CRITICAL SECURITY: Regenerate session ID to prevent Session Fixation attacks.
                 session_regenerate_id(true);
                 
                 $_SESSION['user_id'] = $user['user_id'];
                 $_SESSION['username'] = $user['username'];
                 $_SESSION['role'] = $user['role'] ?? 'viewer';
-                $_SESSION['last_activity'] = time(); // Initialize timeout tracker
+                $_SESSION['group_id'] = $user['group_id'] ?? null;
+                $_SESSION['last_activity'] = time();
                 
                 header('Location: dashboard.php');
                 exit;
             } else {
-                // Generic error message to prevent User Enumeration
                 $error = 'Invalid credentials.';
             }
         } catch (PDOException $e) {
@@ -71,15 +61,13 @@ require_once __DIR__ . '/includes/header.php';
             </div>
             <div class="card-body p-4">
                 
-                <!-- Session Timeout Alert -->
                 <?php if ($timeout): ?>
                     <div class="alert alert-warning alert-dismissible fade show" role="alert">
-                        <i class="bi bi-clock-history"></i> <strong>Session Expired:</strong> You have been logged out due to inactivity. Please log in again.
+                        <i class="bi bi-clock-history"></i> <strong>Session Expired:</strong> You have been logged out due to inactivity.
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
                 <?php endif; ?>
 
-                <!-- Standard Error Alert -->
                 <?php if ($error): ?>
                     <div class="alert alert-danger alert-dismissible fade show" role="alert">
                         <i class="bi bi-exclamation-triangle"></i> <?= htmlspecialchars($error) ?>
@@ -93,7 +81,8 @@ require_once __DIR__ . '/includes/header.php';
                         <div class="input-group">
                             <span class="input-group-text"><i class="bi bi-person"></i></span>
                             <input type="text" class="form-control" id="login_identifier" name="login_identifier" 
-                                   value="<?= htmlspecialchars($_POST['login_identifier'] ?? '') ?>" required autofocus>
+                                   value="<?= htmlspecialchars($_POST['login_identifier'] ?? '') ?>" 
+                                   required autofocus autocomplete="username">
                         </div>
                     </div>
                     
@@ -101,20 +90,33 @@ require_once __DIR__ . '/includes/header.php';
                         <label for="password" class="form-label">Password</label>
                         <div class="input-group">
                             <span class="input-group-text"><i class="bi bi-lock"></i></span>
-                            <input type="password" class="form-control" id="password" name="password" required>
+                            <input type="password" class="form-control" id="password" name="password" 
+                                   required autocomplete="current-password">
                         </div>
                     </div>
                     
-                    <button type="submit" class="btn btn-primary w-100 py-2">
+                    <button type="submit" class="btn btn-primary w-100 py-2" 
+                            data-bs-toggle="tooltip" 
+                            data-bs-placement="top" 
+                            data-bs-title="Click to sign in to your account">
                         <i class="bi bi-box-arrow-in-right"></i> Sign In
                     </button>
                 </form>
             </div>
-            <div class="card-footer text-center text-muted small">
-                Default credentials: <strong>admin</strong> / <strong>NetSentinel2026!</strong>
+            <div class="card-footer text-center">
+                <a href="forgot_password.php" class="small text-muted">Forgot Password?</a>
             </div>
         </div>
     </div>
 </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    });
+</script>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

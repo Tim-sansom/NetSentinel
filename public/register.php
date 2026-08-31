@@ -46,9 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // 3. SECURITY: Hash password securely using bcrypt/Argon2
                 $password_hash = password_hash($password, PASSWORD_DEFAULT);
                 
-                // 4. GDPR Data Minimization: Only store essential data (username, email, hash).
-                // Do not collect DOB, phone numbers, or other unnecessary PII.
-                // Default role is 'viewer' to enforce least privilege.
+                // 4. GDPR Data Minimization: Only store essential data. Default role is 'viewer'.
                 $stmt = $pdo->prepare("
                     INSERT INTO user (username, email, password_hash, role)
                     VALUES (?, ?, ?, 'viewer')
@@ -58,13 +56,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $new_user_id = (int) $pdo->lastInsertId();
                 
                 // 5. Audit Log the registration
-                log_audit($pdo, $new_user_id, 'USER_REGISTERED', 'user', $new_user_id, ['email' => $email]);
+                if (function_exists('log_audit')) {
+                    log_audit($pdo, $new_user_id, 'USER_REGISTERED', 'user', $new_user_id, json_encode(['email' => $email]));
+                }
                 
                 $success = 'Registration successful! You can now <a href="login.php">log in</a>.';
             }
         } catch (PDOException $e) {
             $error = 'Database error. Please try again later.';
-            // SECURITY: Log actual error internally, never expose schema to user
             error_log("Registration DB error: " . $e->getMessage());
         }
     }
@@ -73,6 +72,89 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $page_title = "Register";
 require_once 'includes/header.php';
 ?>
-<!-- HTML remains exactly the same as your current file -->
+
 <div class="row justify-content-center mt-5">
-<!-- ... (rest of your HTML) ... -->
+    <div class="col-md-6 col-lg-5">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white text-center">
+                <h4 class="mb-0"><i class="bi bi-person-plus"></i> NetSentinel Register</h4>
+            </div>
+            <div class="card-body p-4">
+                
+                <!-- Success Alert -->
+                <?php if ($success): ?>
+                    <div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <i class="bi bi-check-circle"></i> <?= $success ?>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                <?php endif; ?>
+
+                <!-- Error Alert -->
+                <?php if ($error): ?>
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        <i class="bi bi-exclamation-triangle"></i> <?= htmlspecialchars($error) ?>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                <?php endif; ?>
+                
+                <!-- Complete, working form -->
+                <form method="POST" action="register.php">
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="bi bi-person"></i></span>
+                            <input type="text" class="form-control" id="username" name="username" 
+                                   value="<?= htmlspecialchars($_POST['username'] ?? '') ?>" required autofocus>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email Address</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="bi bi-envelope"></i></span>
+                            <input type="email" class="form-control" id="email" name="email" 
+                                   value="<?= htmlspecialchars($_POST['email'] ?? '') ?>" required>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Password</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="bi bi-lock"></i></span>
+                            <input type="password" class="form-control" id="password" name="password" required>
+                        </div>
+                        <div class="form-text">Must be at least 8 characters long.</div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="confirm_password" class="form-label">Confirm Password</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="bi bi-lock-fill"></i></span>
+                            <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                        </div>
+                    </div>
+                    
+                    <!-- Added tooltip attributes here -->
+                    <button type="submit" class="btn btn-primary w-100 py-2" data-bs-toggle="tooltip" data-bs-title="Click to create your account">
+                        <i class="bi bi-person-plus"></i> Register
+                    </button>
+                </form>
+            </div>
+            <div class="card-footer text-center text-muted small">
+                Already have an account? <a href="login.php">Sign in here</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Initialize Bootstrap Tooltips -->
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    });
+</script>
+
+<?php require_once 'includes/footer.php'; ?>

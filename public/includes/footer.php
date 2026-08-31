@@ -1,7 +1,8 @@
-        </main> <!-- Closes the <main> tag opened in header.php -->
+        </main> <!-- Closes the <main id="main-content"> landmark opened in header.php -->
 
         <!-- Footer inside the right-hand section -->
-        <footer class="app-footer">
+        <!-- WCAG: Added role="contentinfo" for explicit semantic landmark identification -->
+        <footer class="app-footer" role="contentinfo">
             <p class="mb-0">
                 &copy; <?php echo date('Y'); ?> NetSentinel - SME Endpoint Monitoring Prototype Developed By Tim Sansom v<?php 
                     // Include version tracker and display current version

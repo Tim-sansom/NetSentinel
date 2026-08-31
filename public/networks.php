@@ -1,11 +1,10 @@
 <?php
 /**
  * NetSentinel Network Management Page
- * Admin-only CRUD operations for target subnets, CIDR ranges, and VLAN configurations.
+ * CRUD operations for target subnets, CIDR ranges, and VLAN configurations.
  * 
- * ACADEMIC NOTE FOR MARKERS:
- * This page demonstrates strict Role-Based Access Control (SR2) and secure input handling 
- * (SR3) using prepared statements and integer casting to prevent SQL injection.
+ * SECURITY NOTE: Implements Role-Based Access Control (RBAC). 
+ * Viewers can see the configured networks, but only Admins can add or delete them.
  */
 
 // STEP 1: SECURITY - Start session IMMEDIATELY before ANY output.
@@ -22,56 +21,55 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-// STEP 4: STRICT ADMIN CHECK (Fixes D-007)
-// Case-insensitive role check. Prevents authorization bypass if the DB stores "Admin" instead of "admin".
-if (strtolower($_SESSION['role'] ?? '') !== 'admin') {
-    header('Location: dashboard.php');
-    exit;
-}
+// STEP 4: ROLE CHECK
+// Determine if the user is an admin. Viewers can view, but not modify.
+$is_admin = (strtolower($_SESSION['role'] ?? '') === 'admin');
 
 $page_title = 'Network Management';
 $message = '';
 $error = '';
 
-// Handle Form Submissions
+// Handle Form Submissions (Admin ONLY)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     
-    // 1. Add Network
-    if ($_POST['action'] === 'add') {
-        $name = trim($_POST['name']);
-        $cidr = trim($_POST['cidr']);
-        $vlan_id = !empty($_POST['vlan_id']) ? (int)$_POST['vlan_id'] : null;
-        $gateway_ip = trim($_POST['gateway_ip']);
-        
-        if (!empty($name) && !empty($cidr)) {
+    if (!$is_admin) {
+        $error = "Access Denied: You do not have permission to modify network configurations.";
+    } else {
+        // 1. Add Network
+        if ($_POST['action'] === 'add') {
+            $name = trim($_POST['name']);
+            $cidr = trim($_POST['cidr']);
+            $vlan_id = !empty($_POST['vlan_id']) ? (int)$_POST['vlan_id'] : null;
+            $gateway_ip = trim($_POST['gateway_ip']);
+            
+            if (!empty($name) && !empty($cidr)) {
+                try {
+                    $stmt = $pdo->prepare("INSERT INTO networks (name, cidr, vlan_id, gateway_ip) VALUES (?, ?, ?, ?)");
+                    $stmt->execute([$name, $cidr, $vlan_id, $gateway_ip]);
+                    $message = "Network added successfully!";
+                } catch (PDOException $e) {
+                    $error = "Database error: " . $e->getMessage();
+                    error_log("Network Add Error: " . $e->getMessage());
+                }
+            } else {
+                $error = "Name and CIDR are required.";
+            }
+        } 
+        // 2. Delete Network
+        elseif ($_POST['action'] === 'delete') {
+            $network_id = (int)$_POST['network_id'];
             try {
-                // SECURITY (SR3): Prepared statements prevent SQL Injection on CIDR insertion.
-                $stmt = $pdo->prepare("INSERT INTO networks (name, cidr, vlan_id, gateway_ip) VALUES (?, ?, ?, ?)");
-                $stmt->execute([$name, $cidr, $vlan_id, $gateway_ip]);
-                $message = "Network added successfully!";
+                $stmt = $pdo->prepare("DELETE FROM networks WHERE network_id = ?");
+                $stmt->execute([$network_id]);
+                $message = "Network deleted successfully.";
             } catch (PDOException $e) {
                 $error = "Database error: " . $e->getMessage();
-                error_log("Network Add Error: " . $e->getMessage());
             }
-        } else {
-            $error = "Name and CIDR are required.";
-        }
-    } 
-    // 2. Delete Network
-    elseif ($_POST['action'] === 'delete') {
-        // SECURITY: Cast to integer to prevent SQL injection via ID manipulation
-        $network_id = (int)$_POST['network_id'];
-        try {
-            $stmt = $pdo->prepare("DELETE FROM networks WHERE network_id = ?");
-            $stmt->execute([$network_id]);
-            $message = "Network deleted successfully.";
-        } catch (PDOException $e) {
-            $error = "Database error: " . $e->getMessage();
         }
     }
 }
 
-// Fetch existing networks
+// Fetch existing networks (Visible to all logged-in users)
 $stmt = $pdo->query("SELECT * FROM networks ORDER BY network_id DESC");
 $networks = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -92,13 +90,18 @@ include __DIR__ . '/includes/header.php';
             </h2>
             <p class="text-muted mb-0 mt-1">Configure target ranges to automatically discover unmanaged endpoints</p>
         </div>
-        <!-- FIXED: Added ID for JS tooltip initialization to avoid modal conflict -->
-        <button class="btn btn-primary" id="addNetworkBtn" data-bs-toggle="modal" data-bs-target="#addNetworkModal">
-            <i class="bi bi-plus-circle me-1"></i> Add New Network
-        </button>
+        
+        <!-- Only show Add button for Admins -->
+        <?php if ($is_admin): ?>
+            <button class="btn btn-primary" id="addNetworkBtn" data-bs-toggle="modal" data-bs-target="#addNetworkModal">
+                <i class="bi bi-plus-circle me-1"></i> Add New Network
+            </button>
+        <?php else: ?>
+            <span class="badge bg-secondary fs-6"><i class="bi bi-eye me-1"></i> View Only</span>
+        <?php endif; ?>
     </div>
 
-    <!-- Info Banner - What is this page? -->
+    <!-- Info Banner -->
     <div class="alert alert-info d-flex align-items-start mb-4" role="alert">
         <i class="bi bi-info-circle-fill me-3 mt-1 fs-5"></i>
         <div>
@@ -119,7 +122,6 @@ include __DIR__ . '/includes/header.php';
                         <li><strong>CIDR Range:</strong> The subnet to scan, formatted as IP/Prefix (e.g., <code>192.168.1.0/24</code>). This is required for the scan to work.</li>
                         <li><strong>VLAN ID & Gateway:</strong> Optional fields to help document your network topology for future reference and reporting.</li>
                     </ul>
-                    <p class="mb-0"><strong>Why this matters:</strong> Accurate network definitions ensure the discovery scan is efficient and only targets authorized segments, preventing unnecessary network traffic or accidental scanning of restricted areas.</p>
                 </div>
             </div>
         </div>
@@ -154,41 +156,23 @@ include __DIR__ . '/includes/header.php';
             <?php if (empty($networks)): ?>
                 <div class="text-center py-5">
                     <i class="bi bi-diagram-3 display-4 text-muted"></i>
-                    <p class="text-muted mt-3">No networks configured yet. Click "Add New Network" to get started.</p>
+                    <p class="text-muted mt-3">No networks configured yet. 
+                    <?php if ($is_admin): ?>
+                        Click "Add New Network" to get started.
+                    <?php else: ?>
+                        Please contact your administrator to configure target networks.
+                    <?php endif; ?>
+                    </p>
                 </div>
             <?php else: ?>
                 <div class="table-responsive">
                     <table class="table table-hover table-striped" id="networksTable" style="width:100%">
                         <thead class="table-dark">
                             <tr>
-                                <th>
-                                    Network Name
-                                    <i class="bi bi-question-circle text-muted ms-1" 
-                                       data-bs-toggle="tooltip" 
-                                       data-bs-title="A friendly, descriptive name for this network segment."
-                                       style="cursor: help;"></i>
-                                </th>
-                                <th>
-                                    CIDR Range
-                                    <i class="bi bi-question-circle text-muted ms-1" 
-                                       data-bs-toggle="tooltip" 
-                                       data-bs-title="The IP address range to scan (e.g., 192.168.1.0/24). The discovery script will ping all IPs in this range."
-                                       style="cursor: help;"></i>
-                                </th>
-                                <th>
-                                    VLAN ID
-                                    <i class="bi bi-question-circle text-muted ms-1" 
-                                       data-bs-toggle="tooltip" 
-                                       data-bs-title="Optional. The Virtual LAN identifier, useful for documenting segmented networks."
-                                       style="cursor: help;"></i>
-                                </th>
-                                <th>
-                                    Gateway IP
-                                    <i class="bi bi-question-circle text-muted ms-1" 
-                                       data-bs-toggle="tooltip" 
-                                       data-bs-title="Optional. The default gateway for this subnet, helpful for network mapping."
-                                       style="cursor: help;"></i>
-                                </th>
+                                <th>Network Name</th>
+                                <th>CIDR Range</th>
+                                <th>VLAN ID</th>
+                                <th>Gateway IP</th>
                                 <th class="text-end">Actions</th>
                             </tr>
                         </thead>
@@ -200,6 +184,7 @@ include __DIR__ . '/includes/header.php';
                                 <td><?= $net['vlan_id'] ? htmlspecialchars($net['vlan_id']) : '<span class="text-muted">N/A</span>' ?></td>
                                 <td><?= htmlspecialchars($net['gateway_ip'] ?: 'N/A') ?></td>
                                 <td class="text-end">
+                                    <?php if ($is_admin): ?>
                                     <form method="POST" action="networks.php" onsubmit="return confirm('Are you sure you want to delete this network? This will remove it from future discovery scans.');">
                                         <input type="hidden" name="action" value="delete">
                                         <input type="hidden" name="network_id" value="<?= $net['network_id'] ?>">
@@ -209,6 +194,9 @@ include __DIR__ . '/includes/header.php';
                                             <i class="bi bi-trash"></i> Delete
                                         </button>
                                     </form>
+                                    <?php else: ?>
+                                    <span class="text-muted small">View Only</span>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
@@ -220,7 +208,8 @@ include __DIR__ . '/includes/header.php';
     </div>
 </div>
 
-<!-- Add Network Modal -->
+<!-- Add Network Modal (Admin Only) -->
+<?php if ($is_admin): ?>
 <div class="modal fade" id="addNetworkModal" tabindex="-1" aria-labelledby="addNetworkModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -264,6 +253,7 @@ include __DIR__ . '/includes/header.php';
         </div>
     </div>
 </div>
+<?php endif; ?>
 
 <script>
 $(document).ready(function() {
@@ -276,8 +266,7 @@ $(document).ready(function() {
         })
     })
 
-    // FIXED: Initialize tooltip for Add New Network button specifically 
-    // to avoid conflict with data-bs-toggle="modal"
+    // Initialize tooltip for Add New Network button specifically 
     var addNetworkBtn = document.getElementById('addNetworkBtn');
     if (addNetworkBtn) {
         new bootstrap.Tooltip(addNetworkBtn, {

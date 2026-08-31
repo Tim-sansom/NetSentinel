@@ -39,18 +39,14 @@ body {
     overflow-x: hidden; /* Prevent horizontal scroll on mobile */
 }
 
-p, .text-secondary {
-    color: var(--ns-text-secondary) !important;
-    text-wrap: pretty; /* Better line breaking for readability */
-}
-
 h1, h2, h3, h4, h5, h6 {
     font-family: 'Space Grotesk', sans-serif;
     font-weight: 700;
     color: var(--ns-text-primary);
     line-height: 1.2;
-    letter-spacing: -0.02em;
 }
+
+.text-secondary { color: var(--ns-text-secondary) !important; }
 
 /* 3. Landing Page - Force Dark Theme */
 .landing-page {
@@ -68,7 +64,7 @@ h1, h2, h3, h4, h5, h6 {
     color: var(--ns-text-primary) !important;
 }
 
-/* 4. Ambient Animations (Scoped to Landing Page) */
+/* 4. Ambient Animations (Scoped) */
 .landing-page .ambient-bg {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1;
     background: radial-gradient(circle at 20% 30%, rgba(6, 182, 212, 0.15) 0%, transparent 50%),
@@ -99,11 +95,12 @@ h1, h2, h3, h4, h5, h6 {
 .landing-page .nav-link {
     color: var(--ns-text-secondary) !important;
     font-weight: 500;
-    padding: 0.75rem 1rem !important;
+    padding: 0.75rem 1rem !important; /* Larger touch target for mobile */
     transition: color 0.3s ease;
 }
 .landing-page .nav-link:hover { color: var(--ns-accent-cyan) !important; }
 
+/* Mobile Menu Glass Effect */
 .landing-page .navbar-collapse {
     background: rgba(15, 23, 42, 0.95);
     backdrop-filter: blur(16px);
@@ -113,18 +110,22 @@ h1, h2, h3, h4, h5, h6 {
     border: 1px solid var(--ns-glass-border);
     box-shadow: 0 10px 30px rgba(0,0,0,0.5);
 }
-.landing-page .navbar-toggler { border-color: rgba(255, 255, 255, 0.2); }
-.landing-page .navbar-toggler-icon { filter: invert(1); }
+.landing-page .navbar-toggler {
+    border-color: rgba(255, 255, 255, 0.2);
+}
+.landing-page .navbar-toggler-icon {
+    filter: invert(1); /* Make hamburger icon white */
+}
 
 /* 6. Hero Section & Fluid Typography */
 .landing-page .hero {
     min-height: 100vh;
     display: flex;
     align-items: center;
-    padding: 120px 0 60px;
+    padding: 120px 0 60px; /* Account for fixed nav */
 }
 .landing-page .hero h1 {
-    font-size: clamp(2.5rem, 5vw, 4.5rem);
+    font-size: clamp(2.5rem, 5vw, 4.5rem); /* Scales from 2.5rem on mobile to 4.5rem on TV */
     margin-bottom: 1.5rem;
 }
 .landing-page .hero-subtitle {
@@ -143,11 +144,10 @@ h1, h2, h3, h4, h5, h6 {
     padding: 0.75rem 1.5rem;
     border-radius: 12px;
     font-weight: 600;
-    min-height: 44px;
+    min-height: 44px; /* Minimum touch target size */
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.3s ease;
 }
 .landing-page .btn-primary-glow {
     background: linear-gradient(135deg, var(--ns-accent-cyan), var(--ns-accent-violet));
@@ -161,11 +161,6 @@ h1, h2, h3, h4, h5, h6 {
 .landing-page .btn-glass {
     background: var(--ns-glass-bg);
     border: 1px solid var(--ns-glass-border);
-    color: var(--ns-text-primary);
-}
-.landing-page .btn-glass:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: var(--ns-accent-cyan);
     color: var(--ns-text-primary);
 }
 
@@ -185,16 +180,15 @@ h1, h2, h3, h4, h5, h6 {
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
 }
 
+/* Responsive Feature Icons */
 .landing-page .feature-icon {
     width: 50px; height: 50px;
     background: linear-gradient(135deg, var(--ns-accent-cyan), var(--ns-accent-violet));
     border-radius: 12px;
     display: flex; align-items: center; justify-content: center;
     font-size: 1.5rem; margin-bottom: 1rem;
-    transition: transform 0.3s ease;
 }
 .landing-page .feature-icon i { color: white !important; }
-.glass-card:hover .feature-icon { transform: scale(1.1) rotate(5deg); }
 
 /* 9. Cost Comparison & Sections */
 .landing-page .section-padding { padding: clamp(3rem, 6vw, 6rem) 0; }
@@ -212,9 +206,7 @@ h1, h2, h3, h4, h5, h6 {
     padding: 1.25rem; margin: 1rem 0;
     background: var(--ns-glass-bg); border-radius: 12px;
     border: 1px solid var(--ns-glass-border);
-    transition: all 0.3s ease;
 }
-.landing-page .cost-item:hover { transform: translateX(5px); }
 .landing-page .cost-item.enterprise { border-left: 4px solid var(--ns-accent-rose); }
 .landing-page .cost-item.netsentinel { border-left: 4px solid var(--ns-accent-emerald); background: rgba(16, 185, 129, 0.1); }
 .landing-page .price-tag { font-size: clamp(1.5rem, 2.5vw, 2rem); font-weight: 700; }
@@ -230,11 +222,8 @@ h1, h2, h3, h4, h5, h6 {
     background: var(--ns-glass-bg); border: 2px solid var(--ns-glass-border);
     border-radius: 16px; padding: 2rem; text-align: center;
     min-width: 200px; flex: 1; max-width: 300px;
-    transition: all 0.3s ease;
 }
-.landing-page .arch-box:hover { border-color: var(--ns-accent-cyan); transform: translateY(-5px); }
-.landing-page .arch-arrow { font-size: 2rem; color: var(--ns-accent-cyan); animation: pulse 2s infinite; }
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+.landing-page .arch-arrow { font-size: 2rem; color: var(--ns-accent-cyan); }
 
 /* 11. Stats & Footer */
 .landing-page .stat-number {
@@ -248,22 +237,70 @@ h1, h2, h3, h4, h5, h6 {
     padding: 3rem 0; text-align: center; color: var(--ns-text-secondary);
 }
 .landing-page .footer-links { display: flex; justify-content: center; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 2rem; }
-.landing-page .footer-links a { color: var(--ns-text-secondary); text-decoration: none; transition: color 0.3s ease; }
+.landing-page .footer-links a { color: var(--ns-text-secondary); text-decoration: none; }
 .landing-page .footer-links a:hover { color: var(--ns-accent-cyan); }
 
+/* 12. Dashboard Overrides (For when logged in) */
+[data-bs-theme="dark"] .card { background-color: var(--ns-glass-bg); border-color: var(--ns-glass-border); color: var(--ns-text-primary); }
+[data-bs-theme="dark"] .card-header { background-color: rgba(0, 0, 0, 0.2); border-bottom-color: var(--ns-glass-border); color: var(--ns-text-primary); }
+[data-bs-theme="dark"] .table { color: var(--ns-text-primary); }
+[data-bs-theme="dark"] .dropdown-menu { background-color: var(--ns-bg-darker); border-color: var(--ns-glass-border); }
+[data-bs-theme="dark"] .dropdown-item { color: var(--ns-text-primary); }
+
+/* 13. Badges & Scrollbar */
+.badge { opacity: 1 !important; border: none !important; font-weight: 600 !important; }
+.badge.bg-danger { background-color: #dc3545 !important; color: #fff !important; }
+.badge.bg-warning { background-color: #ffc107 !important; color: #000 !important; }
+.badge.bg-info { background-color: #0dcaf0 !important; color: #000 !important; }
+.badge.bg-secondary { background-color: #6c757d !important; color: #fff !important; }
+.badge.bg-primary { background-color: #0d6efd !important; color: #fff !important; }
+.badge.bg-success { background-color: #198754 !important; color: #fff !important; }
+
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--ns-bg); }
+::-webkit-scrollbar-thumb { background: var(--ns-glass-border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ns-accent-cyan); }
+
+/* =========================================
+   14. RESPONSIVE BREAKPOINTS (Mobile to TV)
+   ========================================= */
+
+/* Mobile Phones (< 576px) */
+@media (max-width: 575.98px) {
+    .landing-page .hero { text-align: center; padding-top: 100px; }
+    .landing-page .hero-cta { justify-content: center; }
+    .landing-page .mt-5.d-flex { justify-content: center; }
+    .landing-page .cost-item { flex-direction: column; text-align: center; gap: 1rem; }
+    .landing-page .arch-diagram { flex-direction: column; }
+    .landing-page .arch-arrow { transform: rotate(90deg); margin: 0.5rem 0; }
+    .landing-page .arch-box { max-width: 100%; }
+}
+
+/* Tablets (576px - 992px) */
+@media (min-width: 576px) and (max-width: 991.98px) {
+    .landing-page .hero h1 { font-size: 3.5rem; }
+}
+
+/* Large Desktops & TVs (> 1400px) */
+@media (min-width: 1400px) {
+    .container-xxl { max-width: 1600px; } /* Prevents stretching too wide on 4K TVs */
+    .landing-page .hero h1 { font-size: 5rem; }
+    .landing-page .section-header h2 { font-size: 3.5rem; }
+}
 /* =========================================
    SOC Dashboard Layout (Sidebar + Topbar)
    ========================================= */
 
+/* 1. Main Layout Structure */
 body.app-layout {
     display: flex;
     min-height: 100vh;
     overflow-x: hidden;
 }
 
-/* Collapsible Sidebar */
+/* 2. Collapsible Sidebar */
 .sidebar {
-    width: 70px;
+    width: 70px; /* Collapsed width */
     background: var(--ns-bg-darker);
     border-right: 1px solid var(--ns-glass-border);
     display: flex;
@@ -277,20 +314,18 @@ body.app-layout {
 }
 
 .sidebar:hover {
-    width: 240px;
-    box-shadow: 5px 0 25px rgba(0,0,0,0.2);
+    width: 240px; /* Expanded width */
 }
 
 .sidebar .nav-link {
     display: flex;
     align-items: center;
-    padding: 0.85rem 1.25rem;
+    padding: 1rem 1.25rem;
     color: var(--ns-text-secondary);
     white-space: nowrap;
     overflow: hidden;
     transition: all 0.2s ease;
     border-left: 3px solid transparent;
-    text-decoration: none;
 }
 
 .sidebar .nav-link:hover, 
@@ -304,11 +339,6 @@ body.app-layout {
     font-size: 1.25rem;
     min-width: 30px;
     text-align: center;
-    transition: transform 0.2s ease;
-}
-
-.sidebar .nav-link:hover i {
-    transform: scale(1.1);
 }
 
 .sidebar .nav-link span {
@@ -318,23 +348,23 @@ body.app-layout {
     font-weight: 500;
 }
 
+/* Show text only on hover */
 .sidebar:hover .nav-link span {
     opacity: 1;
     transition-delay: 0.1s; /* Prevents flickering */
 }
 
-/* Main Content Area */
+/* 3. Main Content Area */
 .main-content {
     flex: 1;
-    margin-left: 70px;
+    margin-left: 70px; /* Match collapsed sidebar width */
     display: flex;
     flex-direction: column;
     min-height: 100vh;
     background: var(--ns-bg);
-    transition: margin-left 0.3s ease;
 }
 
-/* Minimal Top Header */
+/* 4. Minimal Top Header */
 .top-header {
     background: var(--ns-glass-bg);
     backdrop-filter: blur(12px);
@@ -353,41 +383,23 @@ body.app-layout {
     font-weight: 700;
     font-size: 1.25rem;
     color: var(--ns-text-primary);
-    display: flex;
-    align-items: center;
 }
 
-/* Dark Mode Header Text Fix (Electric Cyan) */
-[data-bs-theme="dark"] .card {
-    background-color: var(--ns-glass-bg);
-    border-color: var(--ns-glass-border);
-    color: var(--ns-text-primary);
-}
-
+/* 5. Dark Mode Header Text Fix (The "Blue" Fix) */
 [data-bs-theme="dark"] .card-header {
     background: rgba(0, 0, 0, 0.2);
     border-bottom: 1px solid var(--ns-glass-border);
-    color: var(--ns-text-primary);
 }
 
 [data-bs-theme="dark"] .card-header h5, 
 [data-bs-theme="dark"] .card-header h6,
-[data-bs-theme="dark"] .section-header h2,
-[data-bs-theme="dark"] .card-header h3,
-[data-bs-theme="dark"] .card-header h4 {
-    color: var(--ns-accent-cyan) !important;
+[data-bs-theme="dark"] .section-header h2 {
+    color: var(--ns-accent-cyan) !important; /* Electric Cyan */
     font-weight: 600;
     letter-spacing: 0.5px;
 }
 
-[data-bs-theme="dark"] .table { color: var(--ns-text-primary); }
-[data-bs-theme="dark"] .table thead th { color: var(--ns-text-secondary); border-bottom-color: var(--ns-glass-border); }
-[data-bs-theme="dark"] .table tbody tr:hover { background-color: rgba(255, 255, 255, 0.03); }
-[data-bs-theme="dark"] .dropdown-menu { background-color: var(--ns-bg-darker); border-color: var(--ns-glass-border); }
-[data-bs-theme="dark"] .dropdown-item { color: var(--ns-text-primary); }
-[data-bs-theme="dark"] .dropdown-item:hover { background-color: rgba(255, 255, 255, 0.05); color: var(--ns-accent-cyan); }
-
-/* Footer inside Main Content */
+/* 6. Footer inside Main Content */
 .app-footer {
     margin-top: auto;
     padding: 2rem;
@@ -395,119 +407,177 @@ body.app-layout {
     color: var(--ns-text-secondary);
     border-top: 1px solid var(--ns-glass-border);
     font-size: 0.875rem;
-    background: var(--ns-bg);
 }
 
-/* =========================================
-   Global Utilities & Overrides
-   ========================================= */
-
-/* Badges */
-.badge { opacity: 1 !important; border: none !important; font-weight: 600 !important; }
-.badge.bg-danger { background-color: #dc3545 !important; color: #fff !important; }
-.badge.bg-warning { background-color: #ffc107 !important; color: #000 !important; }
-.badge.bg-info { background-color: #0dcaf0 !important; color: #000 !important; }
-.badge.bg-secondary { background-color: #6c757d !important; color: #fff !important; }
-.badge.bg-primary { background-color: #0d6efd !important; color: #fff !important; }
-.badge.bg-success { background-color: #198754 !important; color: #fff !important; }
-
-/* Tooltips */
-[data-bs-toggle="tooltip"] { cursor: help; transition: color 0.2s; }
-[data-bs-toggle="tooltip"]:hover { color: var(--ns-accent-cyan) !important; }
-th [data-bs-toggle="tooltip"] { font-size: 0.85em; }
-
-/* Custom Scrollbar */
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: var(--ns-bg); }
-::-webkit-scrollbar-thumb { background: var(--ns-glass-border); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: var(--ns-accent-cyan); }
-
-/* =========================================
-   Responsive Breakpoints
-   ========================================= */
-
-/* Mobile Phones (< 576px) */
-@media (max-width: 575.98px) {
-    .landing-page .hero { text-align: center; padding-top: 100px; }
-    .landing-page .hero-cta { justify-content: center; }
-    .landing-page .mt-5.d-flex { justify-content: center; }
-    .landing-page .cost-item { flex-direction: column; text-align: center; gap: 1rem; }
-    .landing-page .arch-diagram { flex-direction: column; }
-    .landing-page .arch-arrow { transform: rotate(90deg); margin: 0.5rem 0; }
-    .landing-page .arch-box { max-width: 100%; }
-    
+/* 7. Responsive Adjustments */
+@media (max-width: 768px) {
     .sidebar { width: 0; border: none; }
-    .sidebar:hover { width: 240px; border-right: 1px solid var(--ns-glass-border); box-shadow: 5px 0 25px rgba(0,0,0,0.5); }
+    .sidebar:hover { width: 240px; border-right: 1px solid var(--ns-glass-border); }
     .main-content { margin-left: 0; }
 }
+/* =========================================
+   KPI Cards: Force White Text for Maximum Contrast
+   Ensures the numbers and labels are always clearly visible 
+   against the coloured backgrounds in BOTH light and dark modes.
+   ========================================= */
 
-/* Tablets (576px - 992px) */
-@media (min-width: 576px) and (max-width: 991.98px) {
-    .landing-page .hero h1 { font-size: 3.5rem; }
+/* Target ONLY the KPI cards in the dashboard row - be very specific */
+.container-fluid.mt-4 .row.mb-3 .col-md-3 .card.bg-primary,
+.container-fluid.mt-4 .row.mb-3 .col-md-3 .card.bg-success,
+.container-fluid.mt-4 .row.mb-3 .col-md-3 .card.bg-danger,
+.container-fluid.mt-4 .row.mb-3 .col-md-3 .card.bg-dark {
+    color: #ffffff !important;
 }
 
-/* Large Desktops & TVs (> 1400px) */
-@media (min-width: 1400px) {
-    .container-xxl { max-width: 1600px; }
-    .landing-page .hero h1 { font-size: 5rem; }
-    .landing-page .section-header h2 { font-size: 3.5rem; }
+.container-fluid.mt-4 .row.mb-3 .col-md-3 .card.bg-primary h2,
+.container-fluid.mt-4 .row.mb-3 .col-md-3 .card.bg-success h2,
+.container-fluid.mt-4 .row.mb-3 .col-md-3 .card.bg-danger h2,
+.container-fluid.mt-4 .row.mb-3 .col-md-3 .card.bg-dark h2 {
+    color: #ffffff !important;
+    font-weight: 800 !important;
+}
+
+/* Make the subtitle labels clearly visible (white with slight transparency) */
+.container-fluid.mt-4 .row.mb-3 .col-md-3 .card.bg-primary .text-white-50,
+.container-fluid.mt-4 .row.mb-3 .col-md-3 .card.bg-success .text-white-50,
+.container-fluid.mt-4 .row.mb-3 .col-md-3 .card.bg-danger .text-white-50,
+.container-fluid.mt-4 .row.mb-3 .col-md-3 .card.bg-dark .text-white-50 {
+    color: rgba(255, 255, 255, 0.8) !important;
+}
+
+/* Ensure the icons on the right side of the KPI cards are also white */
+.container-fluid.mt-4 .row.mb-3 .col-md-3 .card.bg-primary .bi,
+.container-fluid.mt-4 .row.mb-3 .col-md-3 .card.bg-success .bi,
+.container-fluid.mt-4 .row.mb-3 .col-md-3 .card.bg-danger .bi,
+.container-fluid.mt-4 .row.mb-3 .col-md-3 .card.bg-dark .bi {
+    color: rgba(255, 255, 255, 0.8) !important;
 }
 /* =========================================
-   Custom Error Pages (404, 403, 500)
+   Alert Summary Cards: Force White Text
+   Ensures numbers are always clearly visible 
+   against coloured backgrounds in BOTH modes.
    ========================================= */
-.error-page {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    text-align: center;
-    padding: 2rem;
+
+/* Critical Card */
+.row.mb-4 .col-md-4 .card.bg-danger {
+    color: #ffffff !important;
+}
+.row.mb-4 .col-md-4 .card.bg-danger h2,
+.row.mb-4 .col-md-4 .card.bg-danger h6 {
+    color: #ffffff !important;
+}
+.row.mb-4 .col-md-4 .card.bg-danger .text-white-50 {
+    color: rgba(255, 255, 255, 0.8) !important;
 }
 
-.error-card {
-    background: var(--ns-glass-bg);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid var(--ns-glass-border);
-    border-radius: 24px;
-    padding: clamp(2rem, 5vw, 4rem);
-    max-width: 600px;
-    width: 100%;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
-    position: relative;
-    z-index: 10;
+/* High Card */
+.row.mb-4 .col-md-4 .card.bg-warning {
+    color: #ffffff !important;
+}
+.row.mb-4 .col-md-4 .card.bg-warning h2,
+.row.mb-4 .col-md-4 .card.bg-warning h6 {
+    color: #ffffff !important;
+}
+.row.mb-4 .col-md-4 .card.bg-warning .text-black-50 {
+    color: #ffffff !important;
 }
 
-.error-code {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: clamp(6rem, 15vw, 10rem);
-    font-weight: 800;
-    line-height: 1;
-    margin-bottom: 1rem;
-    letter-spacing: -0.05em;
+/* Medium Card */
+.row.mb-4 .col-md-4 .card.bg-dark {
+    color: #ffffff !important;
+}
+.row.mb-4 .col-md-4 .card.bg-dark h2,
+.row.mb-4 .col-md-4 .card.bg-dark h6 {
+    color: #ffffff !important;
+}
+.row.mb-4 .col-md-4 .card.bg-dark .text-white-50 {
+    color: rgba(255, 255, 255, 0.8) !important;
+}
+/* =========================================
+   Anomaly Cards & Badges: Force White Text
+   Ensures text is always clearly visible 
+   against coloured backgrounds.
+   ========================================= */
+
+/* KPI Cards - Force white text */
+.row.mb-4 .col-md-4 .card.bg-warning,
+.row.mb-4 .col-md-4 .card.bg-danger,
+.row.mb-4 .col-md-4 .card.bg-secondary {
+    color: #ffffff !important;
 }
 
-/* Specific Gradients for Error Types */
-.error-404 .error-code {
-    background: linear-gradient(135deg, var(--ns-accent-cyan), var(--ns-accent-emerald));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+.row.mb-4 .col-md-4 .card.bg-warning h2,
+.row.mb-4 .col-md-4 .card.bg-danger h2,
+.row.mb-4 .col-md-4 .card.bg-secondary h2,
+.row.mb-4 .col-md-4 .card.bg-warning h6,
+.row.mb-4 .col-md-4 .card.bg-danger h6,
+.row.mb-4 .col-md-4 .card.bg-secondary h6 {
+    color: #ffffff !important;
 }
 
-.error-403 .error-code {
-    background: linear-gradient(135deg, var(--ns-accent-rose), var(--ns-accent-violet));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+.row.mb-4 .col-md-4 .card.bg-warning .text-white-50,
+.row.mb-4 .col-md-4 .card.bg-danger .text-white-50,
+.row.mb-4 .col-md-4 .card.bg-secondary .text-white-50 {
+    color: rgba(255, 255, 255, 0.8) !important;
 }
 
-.error-500 .error-code {
-    background: linear-gradient(135deg, var(--ns-accent-violet), var(--ns-accent-rose));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+/* Table badges - ensure white text */
+table .badge.bg-danger,
+table .badge.bg-warning,
+table .badge.bg-info,
+table .badge.bg-secondary {
+    color: #ffffff !important;
+}
+/* =========================================
+   Threat Intelligence Cards: Force White Text
+   Ensures text is always clearly visible 
+   against coloured backgrounds.
+   ========================================= */
+
+/* Total Threats Card (Blue) */
+.row.mb-4 .col-md-3 .card.bg-primary {
+    color: #ffffff !important;
+}
+.row.mb-4 .col-md-3 .card.bg-primary h2,
+.row.mb-4 .col-md-3 .card.bg-primary h6 {
+    color: #ffffff !important;
+}
+.row.mb-4 .col-md-3 .card.bg-primary .text-white-50 {
+    color: rgba(255, 255, 255, 0.8) !important;
 }
 
-.error-icon {
-    font-size: 3rem;
-    margin-bottom: 1rem;
-    opacity: 0.8;
+/* RCE/Critical Card (Red) - Already good */
+.row.mb-4 .col-md-3 .card.bg-danger {
+    color: #ffffff !important;
+}
+.row.mb-4 .col-md-3 .card.bg-danger h2,
+.row.mb-4 .col-md-3 .card.bg-danger h6 {
+    color: #ffffff !important;
+}
+.row.mb-4 .col-md-3 .card.bg-danger .text-white-50 {
+    color: rgba(255, 255, 255, 0.8) !important;
+}
+
+/* Ransomware Linked Card (Yellow/Warning) */
+.row.mb-4 .col-md-3 .card.bg-warning {
+    color: #ffffff !important;
+}
+.row.mb-4 .col-md-3 .card.bg-warning h2,
+.row.mb-4 .col-md-3 .card.bg-warning h6 {
+    color: #ffffff !important;
+}
+.row.mb-4 .col-md-3 .card.bg-warning .text-black-50 {
+    color: #ffffff !important;
+}
+
+/* Critical Severity Card (Dark) - Already good */
+.row.mb-4 .col-md-3 .card.bg-dark {
+    color: #ffffff !important;
+}
+.row.mb-4 .col-md-3 .card.bg-dark h2,
+.row.mb-4 .col-md-3 .card.bg-dark h6 {
+    color: #ffffff !important;
+}
+.row.mb-4 .col-md-3 .card.bg-dark .text-white-50 {
+    color: rgba(255, 255, 255, 0.8) !important;
 }
