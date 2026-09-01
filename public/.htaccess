@@ -1,10 +1,13 @@
+# Prevent directory browsing
 Options -Indexes
 
+# Protect hidden files (like .env, .git, .htaccess itself)
 <FilesMatch "^\.">
     Order allow,deny
     Deny from all
 </FilesMatch>
 
+# Only allow execution of .php and .status files
 <FilesMatch "\.(status|php)$">
     Order allow,deny
     Allow from all
@@ -17,4 +20,3 @@ ErrorDocument 500 /500.php
 
 # Enable Rewrite Engine (Useful for clean URLs later)
 RewriteEngine On
-
