@@ -1,7 +1,7 @@
 <?php
 /**
  * NetSentinel Findings Handler
- * Upserts observed findings and auto-resolves open findings
+ * Upsert's observed findings and auto-resolves open findings
  * not re-observed in the latest check run.
  */
 declare(strict_types=1);

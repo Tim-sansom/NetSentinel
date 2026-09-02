@@ -19,7 +19,7 @@ class CheckResult:
     Standardized data structure for the outcome of a security check.
     
     Using a dataclass ensures that results are lightweight, easy to instantiate,
-    and automatically support clean dictionary conversion for JSON serialization.
+    and automatically support clean dictionary conversion for JSON serialisation.
     """
     check_name: str
     status: str  # Expected values: 'pass', 'fail', 'warning', 'error'
@@ -30,7 +30,7 @@ class CheckResult:
 
     def to_dict(self) -> Dict[str, Any]:
         """
-        Convert the CheckResult instance to a dictionary for JSON serialization.
+        Convert the CheckResult instance to a dictionary for JSON serialisation.
         
         Returns:
             A dictionary representation of the check result, with the timestamp 

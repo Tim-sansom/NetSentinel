@@ -2,7 +2,7 @@
 System Information Check - Asset Metadata Collection
 
 Collects OS metadata, version, architecture, uptime, and IP address.
-Fulfills FR1 (System/OS metadata). 
+Fulfils FR1 (System/OS metadata). 
 
 Provides the foundational asset data required for the dashboard to 
 categorize and filter endpoints by operating system, health status, and IP.

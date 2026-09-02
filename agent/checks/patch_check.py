@@ -4,7 +4,7 @@ Patch Level Check - Update Posture Assessment
 Reports patch/update posture: pending update counts, last patch activity,
 auto-update status, and OS support status. 
 
-Fulfills FR1 (System/OS metadata and patch level). Crucially, this check 
+Fulfils FR1 (System/OS metadata and patch level). Crucially, this check 
 is designed to run WITHOUT administrative privileges by using read-only 
 system commands and registry keys.
 """

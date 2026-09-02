@@ -2,7 +2,7 @@
 Port Check - Comprehensive Service Detection
 
 Scans localhost for ~100 common and high-risk open ports.
-Fulfills FR2 (Port/Service checks) and NFR1 (Lightweight).
+Fulfils FR2 (Port/Service checks) and NFR1 (Lightweight).
 
 Strikes a balance between thoroughness (proving SIEM capability) 
 and performance (avoiding a full 65,535 port scan which would 

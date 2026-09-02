@@ -2,7 +2,7 @@
 Persistence Check - Malware Indicator Detection
 
 Detects common, suspicious persistence mechanisms (Cron, Startup, Scheduled Tasks).
-Fulfills FR1 (System metadata) and NFR1 (Lightweight).
+Fulfils FR1 (System metadata) and NFR1 (Lightweight).
 
 Instead of scanning the entire filesystem (which would violate NFR1), 
 this check targets specific high-risk vectors commonly used by malware 

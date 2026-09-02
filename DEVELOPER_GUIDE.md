@@ -147,7 +147,7 @@ Handles user login, TOTP 2FA verification, session validation, role-based access
 Provides a centralized function to log administrative and security events to the `audit_log` table. Designed to fail silently to prevent disrupting the main application flow.
 
 #### `includes/findings.php`
-Upserts observed findings and auto-resolves open findings not re-observed in the latest check run, maintaining a lightweight, stateful alert model.
+Upsert's observed findings and auto-resolves open findings not re-observed in the latest check run, maintaining a lightweight, stateful alert model.
 
 #### `includes/policy_engine.php`
 Evaluates incoming agent telemetry against baseline rules defined for device groups and logs policy violations.

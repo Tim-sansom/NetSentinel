@@ -2,7 +2,7 @@
 Latency Check - Network Connectivity Measurement
 
 Measures basic ICMP latency to the backend API server.
-Fulfills FR3 (Connectivity checks) and helps identify network 
+Fulfils FR3 (Connectivity checks) and helps identify network 
 segmentation or routing issues in hybrid SME environments.
 """
 

@@ -1,7 +1,7 @@
 <?php
 /**
  * NetSentinel User Profile Page
- * Handles password updates, TOTP 2FA enrollment, and personal
+ * Handles password updates, TOTP 2FA enrolment, and personal
  * settings with strict CSRF protection.
  */
 require_once __DIR__ . '/includes/db.php';

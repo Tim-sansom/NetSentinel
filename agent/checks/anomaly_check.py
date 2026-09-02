@@ -2,7 +2,7 @@
 Anomaly Check - Port & Service Detection
 
 Detects unexpected open ports and dangerous services on the endpoint.
-Fulfills the lightweight SIEM requirement by identifying potential 
+Fulfils the lightweight SIEM requirement by identifying potential 
 misconfigurations or malware indicators (e.g., open database ports or 
 unencrypted legacy protocols) without requiring heavy packet inspection.
 """

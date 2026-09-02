@@ -5,7 +5,7 @@ This build script parses the Python agent code and PHP backend code
 to auto-generate a comprehensive DEVELOPER_GUIDE.md file.
 
 It uses Python's built-in AST (Abstract Syntax Tree) module to extract 
-docstrings from Python files, and Regex to extract block comments (/** ... */) 
+docstring's from Python files, and Regex to extract block comments (/** ... */) 
 from PHP files. This ensures the documentation is always in sync with the code.
 """
 

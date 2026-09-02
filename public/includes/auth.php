@@ -99,7 +99,7 @@ function hasRole(string $role): bool {
 
 /**
  * Validates the API token from the agent and returns the device_uuid.
- * Uses secure hashed token comparison (Fulfills SR2).
+ * Uses secure hashed token comparison (Fulfils SR2).
  *
  * @param PDO $pdo Database connection
  * @return string The authenticated device_uuid
@@ -134,7 +134,7 @@ function authenticate_api_request(PDO $pdo): string {
         $device = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$device) {
-            // 3. Audit log the failed attempt (Fulfills SR4)
+            // 3. Audit log the failed attempt (Fulfils SR4)
             try {
                 $ip_address = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
                 $logStmt = $pdo->prepare("
@@ -166,7 +166,7 @@ function authenticate_api_request(PDO $pdo): string {
 
 /**
  * Validates the incoming JSON payload from the agent.
- * Fulfills SR3 (Input Validation).
+ * Fulfils SR3 (Input Validation).
  */
 function validate_json_payload(): array {
     $raw = file_get_contents('php://input');

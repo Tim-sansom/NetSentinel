@@ -21,7 +21,7 @@ if (getenv('NETSENTINEL_ENV') === 'development') {
 }
 
 // 2. Secure Configuration via Environment Variables
-// Fulfills 12-Factor App methodology: credentials are never hardcoded in source control.
+// Fulfils 12-Factor App methodology: credentials are never hardcoded in source control.
 $host = getenv('DB_HOST') ?: 'mysql'; // Safe fallback for local Docker network name
 $db   = getenv('DB_NAME');
 $user = getenv('DB_USER');

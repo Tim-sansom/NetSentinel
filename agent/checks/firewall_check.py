@@ -2,7 +2,7 @@
 Firewall Check - Cross-Platform Status Verification
 
 Determines if the host's native firewall is active.
-Fulfills FR2 (Firewall status) and NFR2 (Cross-platform support).
+Fulfils FR2 (Firewall status) and NFR2 (Cross-platform support).
 Uses native OS commands that do not require elevated (admin/root) privileges.
 """
 

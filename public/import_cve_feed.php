@@ -4,7 +4,7 @@
  * 
  * Fetches the Known Exploited Vulnerabilities (KEV) JSON from CISA, 
  * filters for the last 12 months, auto-flags RCE/Ransomware keywords, 
- * and upserts into the vulnerability_feed table.
+ * and upsert's into the vulnerability_feed table.
  */
 require_once __DIR__ . '/includes/db.php';
 

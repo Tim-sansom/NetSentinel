@@ -97,7 +97,7 @@ The system operates through distributed Python agents that monitor hosts and net
 | Collector | Python (Flask / raw socket) | Centralised event ingestion |
 | Database | MongoDB 6.x | Event & alert storage |
 | Dashboard Backend | PHP 8.x | REST API & server-side rendering |
-| Dashboard Frontend | HTML5 / CSS3 / JavaScript | Real-time UI |
+| Dashboard Frontend | HTML5 / CSS3 / JavaScript /Ajax| Real-time UI |
 | Charting | Chart.js | Dashboard visualisations |
 | Agent Modules | Python (psutil, scapy, etc.) | Pluggable detection modules |
 

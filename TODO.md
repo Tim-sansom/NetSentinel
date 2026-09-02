@@ -50,10 +50,10 @@ Stage 7: Agent Expansion & Cross-Platform Testing
 [x] Test and refine agent on macOS VM (if applicable/stretch)
 
 Stage 8: Hardening & Security
-[ ] Add API rate limiting
-[ ] Improve logging and error handling (Agent & Backend)
-[ ] Check role-based access control (RBAC) on dashboard
-[ ] Basic security review (OWASP top 10 checks)
+[x] Add API rate limiting
+[x] Improve logging and error handling (Agent & Backend)
+[x] Check role-based access control (RBAC) on dashboard
+[x] Basic security review (OWASP top 10 checks)
 
 Stage 9: Integration Testing
 [ ] Run full end-to-end pipeline test
