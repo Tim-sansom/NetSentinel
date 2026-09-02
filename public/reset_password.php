@@ -1,8 +1,9 @@
 <?php
 /**
  * NetSentinel Reset Password (Token Verification)
+ * SR2: Secure password reset with token validation and expiration
  */
-require_once 'includes/db.php';
+require_once __DIR__ . '/includes/db.php';
 
 $success = '';
 $error = '';
@@ -16,7 +17,7 @@ if (!empty($token)) {
         $stmt = $pdo->prepare("
             SELECT pr.user_id, pr.expires_at, u.username, u.email 
             FROM password_resets pr
-            JOIN user u ON pr.user_id = u.user_id
+            JOIN `user` u ON pr.user_id = u.user_id
             WHERE pr.token = ? AND pr.expires_at > NOW()
         ");
         $stmt->execute([$token]);
@@ -47,14 +48,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
         $error = 'Password must be at least 8 characters long.';
     } else {
         try {
-            // Hash new password
+            // Hash new password using bcrypt (PASSWORD_DEFAULT)
             $password_hash = password_hash($new_password, PASSWORD_DEFAULT);
             
             // Update user password
-            $stmt = $pdo->prepare("UPDATE user SET password_hash = ? WHERE user_id = ?");
+            $stmt = $pdo->prepare("UPDATE `user` SET password_hash = ? WHERE user_id = ?");
             $stmt->execute([$password_hash, $user_data['user_id']]);
             
-            // Delete used token
+            // Delete used token (prevent reuse)
             $stmt = $pdo->prepare("DELETE FROM password_resets WHERE user_id = ?");
             $stmt->execute([$user_data['user_id']]);
             
@@ -69,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
 }
 
 $page_title = "Reset Password";
-require_once 'includes/header.php';
+require_once __DIR__ . '/includes/header.php';
 ?>
 
 <div class="row justify-content-center mt-5">
@@ -103,7 +104,7 @@ require_once 'includes/header.php';
                             <div class="input-group">
                                 <span class="input-group-text"><i class="bi bi-lock"></i></span>
                                 <input type="password" class="form-control" id="new_password" name="new_password" 
-                                       required autofocus autocomplete="new-password">
+                                       required autofocus autocomplete="new-password" minlength="8">
                             </div>
                             <div class="form-text">Minimum 8 characters</div>
                         </div>
@@ -138,4 +139,4 @@ require_once 'includes/header.php';
     </div>
 </div>
 
-<?php require_once 'includes/footer.php'; ?>
+<?php require_once __DIR__ . '/includes/footer.php'; ?>
