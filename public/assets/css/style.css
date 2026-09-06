@@ -100,24 +100,38 @@ h1, h2, h3, h4, h5, h6 {
 }
 .landing-page .nav-link:hover { color: var(--ns-accent-cyan) !important; }
 
+/* ==========================================
+   6. Mobile Hamburger Menu Fix
+   ========================================== */
+.landing-page .navbar-toggler {
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    padding: 0.5rem 0.75rem !important;
+}
+
+.landing-page .navbar-toggler:focus {
+    box-shadow: 0 0 0 0.25rem rgba(100, 255, 218, 0.25) !important;
+    outline: none !important;
+}
+
+/* Force pure white icon and REMOVE any invert filters */
+.landing-page .navbar-toggler-icon {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(255, 255, 255, 1)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e") !important;
+    background-size: 1.5em 1.5em !important;
+    filter: none !important; /* This stops it from turning black */
+}
+
 /* Mobile Menu Glass Effect */
 .landing-page .navbar-collapse {
-    background: rgba(15, 23, 42, 0.95);
-    backdrop-filter: blur(16px);
+    background: rgba(15, 23, 42, 0.95) !important;
+    backdrop-filter: blur(16px) !important;
     border-radius: 12px;
     margin-top: 1rem;
     padding: 1.5rem;
     border: 1px solid var(--ns-glass-border);
     box-shadow: 0 10px 30px rgba(0,0,0,0.5);
 }
-.landing-page .navbar-toggler {
-    border-color: rgba(255, 255, 255, 0.2);
-}
-.landing-page .navbar-toggler-icon {
-    filter: invert(1); /* Make hamburger icon white */
-}
 
-/* 6. Hero Section & Fluid Typography */
+/* 7. Hero Section & Fluid Typography */
 .landing-page .hero {
     min-height: 100vh;
     display: flex;
@@ -139,7 +153,7 @@ h1, h2, h3, h4, h5, h6 {
     -webkit-text-fill-color: transparent;
 }
 
-/* 7. Buttons (Touch-friendly) */
+/* 8. Buttons (Touch-friendly) */
 .landing-page .btn {
     padding: 0.75rem 1.5rem;
     border-radius: 12px;
@@ -164,7 +178,7 @@ h1, h2, h3, h4, h5, h6 {
     color: var(--ns-text-primary);
 }
 
-/* 8. Glass Cards & Features Grid */
+/* 9. Glass Cards & Features Grid */
 .glass-card {
     background: var(--ns-glass-bg);
     backdrop-filter: blur(12px);
@@ -190,7 +204,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 .landing-page .feature-icon i { color: white !important; }
 
-/* 9. Cost Comparison & Sections */
+/* 10. Cost Comparison & Sections */
 .landing-page .section-padding { padding: clamp(3rem, 6vw, 6rem) 0; }
 .landing-page .section-header h2 { font-size: clamp(2rem, 4vw, 3rem); margin-bottom: 1rem; text-align: center; }
 .landing-page .section-header p { text-align: center; max-width: 600px; margin: 0 auto 3rem; }
@@ -213,7 +227,7 @@ h1, h2, h3, h4, h5, h6 {
 .landing-page .price-tag.enterprise { color: var(--ns-accent-rose); }
 .landing-page .price-tag.netsentinel { color: var(--ns-accent-emerald); }
 
-/* 10. Architecture Diagram */
+/* 11. Architecture Diagram */
 .landing-page .arch-diagram {
     display: flex; align-items: center; justify-content: center;
     gap: 2rem; padding: 3rem 1rem; flex-wrap: wrap;
@@ -225,7 +239,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 .landing-page .arch-arrow { font-size: 2rem; color: var(--ns-accent-cyan); }
 
-/* 11. Stats & Footer */
+/* 12. Stats & Footer */
 .landing-page .stat-number {
     font-size: clamp(1.75rem, 3vw, 2.5rem);
     background: linear-gradient(135deg, var(--ns-accent-cyan), var(--ns-accent-emerald));
@@ -240,14 +254,14 @@ h1, h2, h3, h4, h5, h6 {
 .landing-page .footer-links a { color: var(--ns-text-secondary); text-decoration: none; }
 .landing-page .footer-links a:hover { color: var(--ns-accent-cyan); }
 
-/* 12. Dashboard Overrides (For when logged in) */
+/* 13. Dashboard Overrides (For when logged in) */
 [data-bs-theme="dark"] .card { background-color: var(--ns-glass-bg); border-color: var(--ns-glass-border); color: var(--ns-text-primary); }
 [data-bs-theme="dark"] .card-header { background-color: rgba(0, 0, 0, 0.2); border-bottom-color: var(--ns-glass-border); color: var(--ns-text-primary); }
 [data-bs-theme="dark"] .table { color: var(--ns-text-primary); }
 [data-bs-theme="dark"] .dropdown-menu { background-color: var(--ns-bg-darker); border-color: var(--ns-glass-border); }
 [data-bs-theme="dark"] .dropdown-item { color: var(--ns-text-primary); }
 
-/* 13. Badges & Scrollbar */
+/* 14. Badges & Scrollbar */
 .badge { opacity: 1 !important; border: none !important; font-weight: 600 !important; }
 .badge.bg-danger { background-color: #dc3545 !important; color: #fff !important; }
 .badge.bg-warning { background-color: #ffc107 !important; color: #000 !important; }
@@ -262,7 +276,7 @@ h1, h2, h3, h4, h5, h6 {
 ::-webkit-scrollbar-thumb:hover { background: var(--ns-accent-cyan); }
 
 /* =========================================
-   14. RESPONSIVE BREAKPOINTS (Mobile to TV)
+   15. RESPONSIVE BREAKPOINTS (Mobile to TV)
    ========================================= */
 
 /* Mobile Phones (< 576px) */
@@ -287,6 +301,7 @@ h1, h2, h3, h4, h5, h6 {
     .landing-page .hero h1 { font-size: 5rem; }
     .landing-page .section-header h2 { font-size: 3.5rem; }
 }
+
 /* =========================================
    SOC Dashboard Layout (Sidebar + Topbar)
    ========================================= */
@@ -415,6 +430,7 @@ body.app-layout {
     .sidebar:hover { width: 240px; border-right: 1px solid var(--ns-glass-border); }
     .main-content { margin-left: 0; }
 }
+
 /* =========================================
    KPI Cards: Force White Text for Maximum Contrast
    Ensures the numbers and labels are always clearly visible 
@@ -452,6 +468,7 @@ body.app-layout {
 .container-fluid.mt-4 .row.mb-3 .col-md-3 .card.bg-dark .bi {
     color: rgba(255, 255, 255, 0.8) !important;
 }
+
 /* =========================================
    Alert Summary Cards: Force White Text
    Ensures numbers are always clearly visible 
@@ -493,6 +510,7 @@ body.app-layout {
 .row.mb-4 .col-md-4 .card.bg-dark .text-white-50 {
     color: rgba(255, 255, 255, 0.8) !important;
 }
+
 /* =========================================
    Anomaly Cards & Badges: Force White Text
    Ensures text is always clearly visible 
@@ -528,6 +546,7 @@ table .badge.bg-info,
 table .badge.bg-secondary {
     color: #ffffff !important;
 }
+
 /* =========================================
    Threat Intelligence Cards: Force White Text
    Ensures text is always clearly visible 
@@ -580,4 +599,36 @@ table .badge.bg-secondary {
 }
 .row.mb-4 .col-md-3 .card.bg-dark .text-white-50 {
     color: rgba(255, 255, 255, 0.8) !important;
+}
+
+/* ==========================================
+   16. Sidebar Scroll Fix for Tablets/Mobile
+   ========================================== */
+.sidebar {
+    overflow-y: auto !important; /* Forces scrolling */
+    overflow-x: hidden !important;
+    max-height: 100vh !important;
+    height: 100vh !important;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+/* Webkit browsers (Chrome, Safari, Brave, iPad) */
+.sidebar::-webkit-scrollbar {
+    width: 6px;
+}
+.sidebar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.sidebar::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.3);
+    border-radius: 3px;
+}
+.sidebar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.5);
+}
+
+/* Ensure the nav inside the sidebar has padding at the bottom so the last link isn't cut off */
+.sidebar .nav.flex-column {
+    padding-bottom: 3rem !important;
 }
