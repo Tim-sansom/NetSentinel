@@ -1,18 +1,37 @@
 <?php
 /**
- * NetSentinel Anomalies Page
- * Visualizes log anomalies, dangerous ports, and persistence 
- * mechanisms for proactive threat detection.
+ * NetSentinel - Anomalies & Risks Dashboard Page
+ * ================================================================================
  * 
- * SECURITY NOTE: Implements Row-Level Security (RLS) to ensure users only see
- * anomalies for devices assigned to their group. Admins see all anomalies.
+ * PURPOSE:
+ * Provides a unified, chronological view of security anomalies (log events) and 
+ * risks (dangerous open ports) detected across the monitored endpoint fleet.
+ * 
+ * ACADEMIC SIGNIFICANCE:
+ * This module demonstrates advanced SQL aggregation and Multi-Tenant Isolation (SR2).
+ * By using a `UNION ALL` query, it merges disparate finding types (log vs. port) 
+ * into a single, cohesive threat feed, simulating a lightweight SIEM correlation engine 
+ * without the performance overhead of a full enterprise SIEM.
+ * 
+ * SECURITY BOUNDARIES:
+ * - SR2 (Access Control): Strict Row-Level Security (RLS) enforced on all aggregate 
+ *   and detailed queries via `device_group_id` joins.
+ * - SR3 (Output Sanitisation): All dynamic data is escaped via htmlspecialchars() 
+ *   to prevent Cross-Site Scripting (XSS) in the findings table.
+ * 
+ * @author Tim Sansom
+ * @version 1.0
+ * @date 2026
  */
+
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
+
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/db.php';
 
+// Enforce authentication before any data access
 if (!isset($_SESSION['user_id'])) {
     header('Location: login.php');
     exit;
@@ -20,57 +39,68 @@ if (!isset($_SESSION['user_id'])) {
 
 $page_title = 'Anomalies & Risks';
 
-// --- SECURITY: Determine user's access scope ---
-$is_admin = (strtolower($_SESSION['role'] ?? '') === 'admin');
+// ===========================================================================
+// ROLE AND SCOPE DETERMINATION (SR2)
+// ===========================================================================
+// Normalize role to lowercase to prevent case-sensitivity bypasses
+$current_role = strtolower($_SESSION['role'] ?? '');
+$is_super_admin = ($current_role === 'super_admin');
+$is_admin = ($current_role === 'admin' || $is_super_admin);
 $user_group_id = $_SESSION['group_id'] ?? null;
 
-// 1. Fetch 24-Hour Summary Statistics (with RLS)
-if ($is_admin) {
-    $stats_query = "
+// ===========================================================================
+// 1. FETCH 24-HOUR SUMMARY STATISTICS (KPI CARDS)
+// ===========================================================================
+// Uses correlated subqueries to calculate rolling 24-hour metrics efficiently.
+if ($is_super_admin) {
+    // Super Admins: Global visibility across all tenants
+    $stats = $pdo->query("
         SELECT 
-        (SELECT COUNT(*) FROM log_finding lf JOIN check_run cr ON lf.check_run_id = cr.check_run_id WHERE cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR)) as log_anomalies,
-        (SELECT COUNT(*) FROM port_finding pf JOIN check_run cr ON pf.check_run_id = cr.check_run_id WHERE pf.severity IN ('high', 'critical') AND cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR)) as dangerous_ports,
-        (SELECT COUNT(DISTINCT d.device_id) FROM device d JOIN check_run cr ON d.device_id = cr.device_id WHERE cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR) AND d.current_health_status != 'healthy') as unhealthy_devices
-    ";
-    $stats = $pdo->query($stats_query)->fetch(PDO::FETCH_ASSOC);
+            (SELECT COUNT(*) FROM log_finding lf JOIN check_run cr ON lf.check_run_id = cr.check_run_id WHERE cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR)) as log_anomalies,
+            (SELECT COUNT(*) FROM port_finding pf JOIN check_run cr ON pf.check_run_id = cr.check_run_id WHERE pf.severity IN ('high', 'critical') AND cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR)) as dangerous_ports,
+            (SELECT COUNT(DISTINCT d.device_id) FROM device d JOIN check_run cr ON d.device_id = cr.device_id WHERE cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR) AND d.current_health_status != 'healthy') as unhealthy_devices
+    ")->fetch(PDO::FETCH_ASSOC);
 } else {
     if ($user_group_id) {
-        $stats_query = "
+        // Standard Admins: STRICT RLS. 
+        // Every subquery explicitly JOINs the `device` table to filter by `device_group_id`.
+        $stmt = $pdo->prepare("
             SELECT 
-            (SELECT COUNT(*) FROM log_finding lf JOIN check_run cr ON lf.check_run_id = cr.check_run_id JOIN device d ON cr.device_id = d.device_id WHERE d.device_group_id = ? AND cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR)) as log_anomalies,
-            (SELECT COUNT(*) FROM port_finding pf JOIN check_run cr ON pf.check_run_id = cr.check_run_id JOIN device d ON cr.device_id = d.device_id WHERE d.device_group_id = ? AND pf.severity IN ('high', 'critical') AND cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR)) as dangerous_ports,
-            (SELECT COUNT(DISTINCT d.device_id) FROM device d JOIN check_run cr ON d.device_id = cr.device_id WHERE d.device_group_id = ? AND cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR) AND d.current_health_status != 'healthy') as unhealthy_devices
-        ";
-        $stmt = $pdo->prepare($stats_query);
+                (SELECT COUNT(*) FROM log_finding lf JOIN check_run cr ON lf.check_run_id = cr.check_run_id JOIN device d ON cr.device_id = d.device_id WHERE d.device_group_id = ? AND cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR)) as log_anomalies,
+                (SELECT COUNT(*) FROM port_finding pf JOIN check_run cr ON pf.check_run_id = cr.check_run_id JOIN device d ON cr.device_id = d.device_id WHERE d.device_group_id = ? AND pf.severity IN ('high', 'critical') AND cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR)) as dangerous_ports,
+                (SELECT COUNT(DISTINCT d.device_id) FROM device d JOIN check_run cr ON d.device_id = cr.device_id WHERE d.device_group_id = ? AND cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR) AND d.current_health_status != 'healthy') as unhealthy_devices
+        ");
         $stmt->execute([$user_group_id, $user_group_id, $user_group_id]);
         $stats = $stmt->fetch(PDO::FETCH_ASSOC);
     } else {
-        // User has no group - show zeros
+        // Defensive fallback for users without an assigned group
         $stats = ['log_anomalies' => 0, 'dangerous_ports' => 0, 'unhealthy_devices' => 0];
     }
 }
 
-// 2. Fetch Chart Data (with RLS)
-if ($is_admin) {
-    $chart_query = "
+// ===========================================================================
+// 2. FETCH CHART DATA (7-DAY AGGREGATION)
+// ===========================================================================
+// Server-side aggregation (GROUP BY) ensures the frontend only receives 
+// a lightweight JSON payload, satisfying NFR1 (Performance).
+if ($is_super_admin) {
+    $chart_data = $pdo->query("
         SELECT lf.anomaly_type, COUNT(*) as count 
         FROM log_finding lf 
         JOIN check_run cr ON lf.check_run_id = cr.check_run_id 
         WHERE cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL 7 DAY) 
         GROUP BY lf.anomaly_type ORDER BY count DESC LIMIT 5
-    ";
-    $chart_data = $pdo->query($chart_query)->fetchAll(PDO::FETCH_ASSOC);
+    ")->fetchAll(PDO::FETCH_ASSOC);
 } else {
     if ($user_group_id) {
-        $chart_query = "
+        $stmt = $pdo->prepare("
             SELECT lf.anomaly_type, COUNT(*) as count 
             FROM log_finding lf 
             JOIN check_run cr ON lf.check_run_id = cr.check_run_id 
             JOIN device d ON cr.device_id = d.device_id
             WHERE d.device_group_id = ? AND cr.run_timestamp >= DATE_SUB(NOW(), INTERVAL 7 DAY) 
             GROUP BY lf.anomaly_type ORDER BY count DESC LIMIT 5
-        ";
-        $stmt = $pdo->prepare($chart_query);
+        ");
         $stmt->execute([$user_group_id]);
         $chart_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } else {
@@ -78,12 +108,18 @@ if ($is_admin) {
     }
 }
 
+// Encode for Chart.js consumption
 $chart_labels = json_encode(array_column($chart_data, 'anomaly_type'));
 $chart_counts = json_encode(array_column($chart_data, 'count'));
 
-// 3. Fetch Detailed Findings for DataTable (with RLS)
-if ($is_admin) {
-    $findings_query = "
+// ===========================================================================
+// 3. FETCH DETAILED FINDINGS (UNIFIED THREAT FEED)
+// ===========================================================================
+// Uses UNION ALL to merge log and port findings into a single chronological feed.
+// UNION ALL is preferred over UNION here for performance, as we do not need 
+// the overhead of duplicate row elimination.
+if ($is_super_admin) {
+    $findings = $pdo->query("
         SELECT 'Log' as source, lf.anomaly_type as type, lf.event_count as count, lf.severity, lf.details, cr.run_timestamp as created_at, d.hostname, d.os_family
         FROM log_finding lf
         JOIN check_run cr ON lf.check_run_id = cr.check_run_id
@@ -95,25 +131,26 @@ if ($is_admin) {
         JOIN device d ON cr.device_id = d.device_id
         WHERE pf.severity IN ('high', 'critical')
         ORDER BY created_at DESC LIMIT 200
-    ";
-    $findings = $pdo->query($findings_query)->fetchAll(PDO::FETCH_ASSOC);
+    ")->fetchAll(PDO::FETCH_ASSOC);
 } else {
     if ($user_group_id) {
-        $findings_query = "
-            SELECT 'Log' as source, lf.anomaly_type as type, lf.event_count as count, lf.severity, lf.details, cr.run_timestamp as created_at, d.hostname, d.os_family
-            FROM log_finding lf
-            JOIN check_run cr ON lf.check_run_id = cr.check_run_id
-            JOIN device d ON cr.device_id = d.device_id
-            WHERE d.device_group_id = ?
-            UNION ALL
-            SELECT 'Port' as source, CONCAT('Port ', pf.port_number, ' (', pf.protocol, ')') as type, 1 as count, pf.severity, pf.process_name as details, cr.run_timestamp as created_at, d.hostname, d.os_family
-            FROM port_finding pf
-            JOIN check_run cr ON pf.check_run_id = cr.check_run_id
-            JOIN device d ON cr.device_id = d.device_id
-            WHERE d.device_group_id = ? AND pf.severity IN ('high', 'critical')
+        // Standard Admins: RLS applied to both sides of the UNION ALL via a wrapper subquery
+        $stmt = $pdo->prepare("
+            SELECT source, type, count, severity, details, created_at, hostname, os_family FROM (
+                SELECT 'Log' as source, lf.anomaly_type as type, lf.event_count as count, lf.severity, lf.details, cr.run_timestamp as created_at, d.hostname, d.os_family
+                FROM log_finding lf
+                JOIN check_run cr ON lf.check_run_id = cr.check_run_id
+                JOIN device d ON cr.device_id = d.device_id
+                WHERE d.device_group_id = ?
+                UNION ALL
+                SELECT 'Port' as source, CONCAT('Port ', pf.port_number, ' (', pf.protocol, ')') as type, 1 as count, pf.severity, pf.process_name as details, cr.run_timestamp as created_at, d.hostname, d.os_family
+                FROM port_finding pf
+                JOIN check_run cr ON pf.check_run_id = cr.check_run_id
+                JOIN device d ON cr.device_id = d.device_id
+                WHERE d.device_group_id = ? AND pf.severity IN ('high', 'critical')
+            ) as combined
             ORDER BY created_at DESC LIMIT 200
-        ";
-        $stmt = $pdo->prepare($findings_query);
+        ");
         $stmt->execute([$user_group_id, $user_group_id]);
         $findings = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } else {
@@ -124,61 +161,33 @@ if ($is_admin) {
 include __DIR__ . '/includes/header.php';
 ?>
 
+<!-- ========================================================================= -->
+<!-- HTML CONTENT - ANOMALIES DASHBOARD INTERFACE -->
+<!-- ========================================================================= -->
+
 <div class="container-fluid mt-4">
-    <!-- Page Header -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h2 class="mb-0">
-                <i class="bi bi-shield-exclamation me-2"></i>Anomalies & Risks
-                <i class="bi bi-question-circle text-muted ms-2" 
-                   data-bs-toggle="tooltip" 
-                   data-bs-title="Unified view of unusual patterns and high-risk configurations detected by agents"
-                   style="cursor: help; font-size: 0.6em; vertical-align: middle;"></i>
-            </h2>
+            <h2 class="mb-0"><i class="bi bi-shield-exclamation me-2"></i>Anomalies & Risks</h2>
             <p class="text-muted mb-0 mt-1">Identify potential security issues before they become breaches</p>
         </div>
         <span class="badge bg-info text-dark fs-6">Unified Threat View</span>
     </div>
 
-    <!-- Info Banner -->
     <div class="alert alert-info d-flex align-items-start mb-4" role="alert">
         <i class="bi bi-info-circle-fill me-3 mt-1 fs-5"></i>
         <div>
             <h6 class="alert-heading mb-2">What are Anomalies & Risks?</h6>
-            <p class="mb-2 small">
-                This page combines lightweight log analysis and port scanning results to highlight unusual patterns 
-                or misconfigurations that may indicate security issues. Unlike standard alerts, anomalies often point 
-                to suspicious behavior (like repeated failed logins) or risky exposure (like open SMB ports).
-            </p>
-            <button class="btn btn-sm btn-link p-0 mt-2" type="button" data-bs-toggle="collapse" data-bs-target="#anomaliesHelp" aria-expanded="false"
-                    data-bs-toggle="tooltip" data-bs-title="Expand to see usage instructions">
-                Show how to use this page
-            </button>
-            <div class="collapse mt-2" id="anomaliesHelp">
-                <div class="card card-body bg-light small">
-                    <p class="mb-2"><strong>How to use this page:</strong></p>
-                    <ul class="mb-2">
-                        <li><strong>Chart:</strong> Shows the most common types of log anomalies detected across your network in the last 7 days.</li>
-                        <li><strong>Table:</strong> Lists specific high-severity findings. Use the search box to filter by hostname, source (Log/Port), or type.</li>
-                        <li><strong>Action:</strong> If you see a "Critical" or "High" finding, click into the device details to investigate the specific process or configuration causing it.</li>
-                    </ul>
-                </div>
-            </div>
+            <p class="mb-2 small">This page combines lightweight log analysis and port scanning results to highlight unusual patterns or misconfigurations across your tenant's devices.</p>
         </div>
     </div>
 
-    <!-- Summary KPI Cards -->
+    <!-- KPI Summary Cards -->
     <div class="row mb-4">
         <div class="col-md-4">
             <div class="card bg-warning text-white shadow-sm h-100">
                 <div class="card-body text-center">
-                    <h6 class="text-white-50 text-uppercase small">
-                        Log Anomalies (24h)
-                        <i class="bi bi-question-circle ms-1" 
-                           data-bs-toggle="tooltip" 
-                           data-bs-title="Unusual patterns in system logs detected in the last 24 hours."
-                           style="cursor: help;"></i>
-                    </h6>
+                    <h6 class="text-white-50 text-uppercase small">Log Anomalies (24h)</h6>
                     <h2 class="fw-bold"><?= number_format($stats['log_anomalies'] ?? 0) ?></h2>
                 </div>
             </div>
@@ -186,13 +195,7 @@ include __DIR__ . '/includes/header.php';
         <div class="col-md-4">
             <div class="card bg-danger text-white shadow-sm h-100">
                 <div class="card-body text-center">
-                    <h6 class="text-white-50 text-uppercase small">
-                        Dangerous Ports (24h)
-                        <i class="bi bi-question-circle ms-1" 
-                           data-bs-toggle="tooltip" 
-                           data-bs-title="High-risk network ports detected as open in the last 24 hours."
-                           style="cursor: help;"></i>
-                    </h6>
+                    <h6 class="text-white-50 text-uppercase small">Dangerous Ports (24h)</h6>
                     <h2 class="fw-bold"><?= number_format($stats['dangerous_ports'] ?? 0) ?></h2>
                 </div>
             </div>
@@ -200,13 +203,7 @@ include __DIR__ . '/includes/header.php';
         <div class="col-md-4">
             <div class="card bg-secondary text-white shadow-sm h-100">
                 <div class="card-body text-center">
-                    <h6 class="text-white-50 text-uppercase small">
-                        Unhealthy Devices (24h)
-                        <i class="bi bi-question-circle ms-1" 
-                           data-bs-toggle="tooltip" 
-                           data-bs-title="Devices not reporting a 'healthy' status in the last 24 hours."
-                           style="cursor: help;"></i>
-                    </h6>
+                    <h6 class="text-white-50 text-uppercase small">Unhealthy Devices (24h)</h6>
                     <h2 class="fw-bold"><?= number_format($stats['unhealthy_devices'] ?? 0) ?></h2>
                 </div>
             </div>
@@ -214,18 +211,10 @@ include __DIR__ . '/includes/header.php';
     </div>
 
     <div class="row">
-        <!-- Chart Section -->
+        <!-- Chart.js Visualization -->
         <div class="col-md-4 mb-4">
             <div class="card shadow-sm h-100">
-                <div class="card-header bg-white">
-                    <h5 class="mb-0">
-                        Top Anomaly Types (7 Days)
-                        <i class="bi bi-question-circle text-muted ms-2" 
-                           data-bs-toggle="tooltip" 
-                           data-bs-title="The most frequently occurring log anomaly categories across all devices over the past week."
-                           style="cursor: help;"></i>
-                    </h5>
-                </div>
+                <div class="card-header bg-white"><h5 class="mb-0">Top Anomaly Types (7 Days)</h5></div>
                 <div class="card-body d-flex align-items-center justify-content-center">
                     <?php if (empty($chart_data)): ?>
                         <p class="text-muted text-center">No anomaly data available for the last 7 days.</p>
@@ -236,7 +225,7 @@ include __DIR__ . '/includes/header.php';
             </div>
         </div>
 
-        <!-- DataTable Section -->
+        <!-- Detailed Findings DataTable -->
         <div class="col-md-8 mb-4">
             <div class="card shadow-sm">
                 <div class="card-header bg-white d-flex justify-content-between align-items-center">
@@ -248,13 +237,7 @@ include __DIR__ . '/includes/header.php';
                         <div class="text-center py-5">
                             <i class="bi bi-shield-check display-4 text-success"></i>
                             <h5 class="mt-3">No High-Severity Findings</h5>
-                            <p class="text-muted">
-                                <?php if ($is_admin): ?>
-                                    No high-severity anomalies or dangerous ports detected recently.
-                                <?php else: ?>
-                                    You do not have access to any device anomaly data. Please contact your administrator to be assigned to a device group.
-                                <?php endif; ?>
-                            </p>
+                            <p class="text-muted"><?php if ($is_admin): ?>No high-severity anomalies detected recently.<?php else: ?>You do not have access to any device anomaly data.<?php endif; ?></p>
                         </div>
                     <?php else: ?>
                         <div class="table-responsive">
@@ -271,40 +254,17 @@ include __DIR__ . '/includes/header.php';
                                 </thead>
                                 <tbody>
                                     <?php foreach ($findings as $f): 
-                                        $badge_class = 'bg-info text-dark';
-                                        $tooltip_text = 'Informational finding';
-                                        if ($f['severity'] === 'critical') {
-                                            $badge_class = 'bg-danger';
-                                            $tooltip_text = 'Critical: Immediate investigation required.';
-                                        } elseif ($f['severity'] === 'high') {
-                                            $badge_class = 'bg-warning text-dark';
-                                            $tooltip_text = 'High: Needs attention soon.';
-                                        }
+                                        // Dynamic severity badge mapping for visual consistency
+                                        $badge_class = $f['severity'] === 'critical' ? 'bg-danger' : ($f['severity'] === 'high' ? 'bg-warning text-dark' : 'bg-info text-dark');
                                     ?>
                                     <tr>
+                                        <!-- SR3: Escape all dynamic output to prevent XSS -->
                                         <td><small><?= date('d M H:i', strtotime($f['created_at'])) ?></small></td>
-                                        <td>
-                                            <strong><?= htmlspecialchars($f['hostname'] ?? 'Unknown') ?></strong><br>
-                                            <small class="text-muted"><?= htmlspecialchars($f['os_family'] ?? '') ?></small>
-                                        </td>
-                                        <td>
-                                            <span class="badge bg-secondary"
-                                                  data-bs-toggle="tooltip" 
-                                                  data-bs-title="Source: <?= htmlspecialchars($f['source']) ?>"
-                                                  style="cursor: help;">
-                                                <?= htmlspecialchars($f['source']) ?>
-                                            </span>
-                                        </td>
+                                        <td><strong><?= htmlspecialchars($f['hostname'] ?? 'Unknown') ?></strong></td>
+                                        <td><span class="badge bg-secondary"><?= htmlspecialchars($f['source']) ?></span></td>
                                         <td><?= htmlspecialchars($f['type']) ?></td>
                                         <td><small class="text-muted"><?= htmlspecialchars($f['details'] ?? 'N/A') ?></small></td>
-                                        <td>
-                                            <span class="badge <?= $badge_class ?>" 
-                                                  data-bs-toggle="tooltip" 
-                                                  data-bs-title="<?= $tooltip_text ?>"
-                                                  style="cursor: help;">
-                                                <?= strtoupper(htmlspecialchars($f['severity'])) ?>
-                                            </span>
-                                        </td>
+                                        <td><span class="badge <?= $badge_class ?>"><?= strtoupper(htmlspecialchars($f['severity'])) ?></span></td>
                                     </tr>
                                     <?php endforeach; ?>
                                 </tbody>
@@ -317,18 +277,18 @@ include __DIR__ . '/includes/header.php';
     </div>
 </div>
 
+<!-- ========================================================================= -->
+<!-- JAVASCRIPT - CHART.JS AND DATATABLES INITIALIZATION -->
+<!-- ========================================================================= -->
 <script>
 $(document).ready(function() {
     // Initialize Bootstrap Tooltips
-    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl, {
-            trigger: 'hover',
-            placement: 'auto'
-        })
-    })
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) { 
+        return new bootstrap.Tooltip(tooltipTriggerEl, { trigger: 'hover', placement: 'auto' }); 
+    });
 
-    // Initialize Chart.js
+    // Initialize Doughnut Chart (Only if data exists)
     <?php if (!empty($chart_data)): ?>
     const ctx = document.getElementById('anomalyChart').getContext('2d');
     new Chart(ctx, {
@@ -338,32 +298,24 @@ $(document).ready(function() {
             datasets: [{
                 data: <?= $chart_counts ?>,
                 backgroundColor: ['#dc3545', '#ffc107', '#17a2b8', '#6c757d', '#0d6efd'],
-                borderWidth: 0
+                borderWidth: 0 // Clean, modern aesthetic without border lines
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: { boxWidth: 12, font: { size: 11 } }
-                }
+            plugins: { 
+                legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } 
             }
         }
     });
     <?php endif; ?>
 
-    // Initialize DataTables
+    // Initialize DataTables for the unified findings feed
     $('#anomaliesTable').DataTable({
-        order: [[0, 'desc']],
+        order: [[0, 'desc']], // Default sort by Time (newest first)
         pageLength: 10,
-        language: {
-            search: "Filter findings:"
-        },
-        columnDefs: [
-            { targets: [4], width: '25%' }
-        ]
+        language: { search: "Filter findings:" }
     });
 });
 </script>
