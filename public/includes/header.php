@@ -12,15 +12,12 @@
  * This file demonstrates foundational web application security and UX design:
  * 1. Centralized RBAC: Ensures navigation links are strictly gated by user role.
  * 2. Defense-in-Depth: Applies consistent XSS sanitization to all dynamic output.
- * 3. Accessibility (WCAG): Implements skip-links and ARIA attributes for screen readers.
+ * 3. Accessibility (WCAG): Implements skip-links, ARIA attributes, and mobile navigation.
  * 
  * SECURITY BOUNDARIES:
  * - SR2 (Access Control): Case-insensitive role validation prevents casing-based bypasses.
  * - SR3 (XSS Prevention): All session-derived variables are escaped via htmlspecialchars().
  * 
- * @author Tim Sansom
- * @version 1.0
- * @date 2026
  */
 
 // 1. SECURITY: Start session BEFORE any HTML output to prevent session fixation/hijacking.
@@ -66,7 +63,7 @@ $is_public_page = in_array($current_page, $public_pages);
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <link href="assets/css/style.css" rel="stylesheet">
 
-    <!-- Core JavaScript Libraries (Loaded in head for immediate parsing, deferred execution handled by browsers) -->
+    <!-- Core JavaScript Libraries -->
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
@@ -122,7 +119,8 @@ $is_public_page = in_array($current_page, $public_pages);
     </a>
 
     <!-- 1. LEFT SIDEBAR (Collapsible Navigation) -->
-    <nav class="sidebar" aria-label="Main Dashboard Navigation">
+    <!-- FIX: Added id="mainSidebar" for the mobile toggle JavaScript to target -->
+    <nav class="sidebar" id="mainSidebar" aria-label="Main Dashboard Navigation">
         <div class="nav flex-column">
             <!-- Standard Navigation Links -->
             <a class="nav-link <?= $current_page == 'dashboard.php' ? 'active' : '' ?>" href="dashboard.php">
@@ -167,7 +165,8 @@ $is_public_page = in_array($current_page, $public_pages);
             <!-- SR2: Super Admin-Only Navigation Links (Deep Diagnostics) -->
             <?php if ($is_super_admin): ?>
                 <hr class="border-secondary mx-3 my-2" role="presentation">
-                <a class="nav-link text-info <?= $current_page == 'server_telemetry.php' ? 'active' : '' ?>" href="server_telemetry.php">
+                <!-- FIX: Changed href and active check from server_telemetry.php to server_metrics.php -->
+                <a class="nav-link text-info <?= $current_page == 'server_metrics.php' ? 'active' : '' ?>" href="server_metrics.php">
                     <i class="bi bi-activity" aria-hidden="true"></i><span>Server Telemetry</span>
                 </a>
                 <a class="nav-link text-info <?= $current_page == 'user_audit.php' ? 'active' : '' ?>" href="user_audit.php">
@@ -181,6 +180,11 @@ $is_public_page = in_array($current_page, $public_pages);
     <div class="main-content">
         <header class="top-header">
             <div class="brand-text">
+                <!-- FIX: Added Mobile Hamburger Menu Toggle Button (Visible only on mobile via d-md-none) -->
+                <button class="btn btn-link nav-link d-md-none p-0 me-2" id="sidebarToggle" aria-label="Toggle navigation menu" style="color: inherit;">
+                    <i class="bi bi-list fs-4"></i>
+                </button>
+                
                 <i class="bi bi-shield-lock me-2 text-info" aria-hidden="true"></i> NetSentinel
             </div>
             

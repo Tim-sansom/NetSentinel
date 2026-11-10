@@ -2,40 +2,40 @@
 /**
  * NetSentinel - Network Discovery Page
  * ================================================================================
- * 
+ *
  * PURPOSE:
- * Provides network scanning capabilities to discover unmanaged devices on configured 
- * subnets. Triggers an adaptive Python-based scanner via AJAX and displays results 
+ * Provides network scanning capabilities to discover unmanaged devices on configured
+ * subnets. Triggers an adaptive Python-based scanner via AJAX and displays results
  * in real-time without page reloads.
- * 
+ *
  * ACADEMIC SIGNIFICANCE:
  * This module demonstrates several advanced web application concepts:
  * 1. Asynchronous Execution (NFR1): Non-blocking UI via AJAX for long-running tasks.
- * 2. Historical Delta Tracking: Algorithmically comparing scan snapshots to identify 
+ * 2. Historical Delta Tracking: Algorithmically comparing scan snapshots to identify
  *    newly connected devices, a critical feature for SME security monitoring.
  * 3. Strict Row-Level Security (SR2): Ensuring multi-tenant isolation at every query level.
- * 
+ *
  * SECURITY BOUNDARIES:
  * - SR2 (Access Control): All database queries are strictly filtered by `user_id` or `device_group_id`.
- * - SR3 (Input Sanitisation): Uses `escapeshellarg()` to prevent command injection when passing 
+ * - SR3 (Input Sanitisation): Uses `escapeshellarg()` to prevent command injection when passing
  *   JSON payloads to the underlying OS shell.
- * 
+ *
  * @author Tim Sansom
  * @version 1.0
  * @date 2026
  */
 
-if (session_status() === PHP_SESSION_NONE) { 
-    session_start(); 
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
 }
 
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/db.php';
 
 // Redirect unauthenticated users
-if (!isset($_SESSION['user_id'])) { 
-    header('Location: login.php'); 
-    exit; 
+if (!isset($_SESSION['user_id'])) {
+    header('Location: login.php');
+    exit;
 }
 
 // ===========================================================================
@@ -107,13 +107,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['trigger_scan'])) {
                         VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)
                     ");
                     if ($insert_stmt->execute([
-                        $scan_id, 
-                        $device['ip'] ?? '', 
-                        $device['mac'] ?? 'unknown', 
-                        $device['hostname'] ?? 'unknown', 
-                        $device['device_type'] ?? 'Unknown', 
-                        $device['network_name'] ?? 'Unknown', 
-                        $vlan_val
+                        $scan_id, $device['ip'] ?? '', $device['mac'] ?? 'unknown', 
+                        $device['hostname'] ?? 'unknown', $device['device_type'] ?? 'Unknown', 
+                        $device['network_name'] ?? 'Unknown', $vlan_val
                     ])) {
                         $devices_saved++;
                     }
@@ -137,7 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['trigger_scan'])) {
         echo json_encode([
             'success' => false, 
             'error' => "Script failed (Exit code: $return_var).", 
-            'output' => substr($raw_output, 0, 500) // Truncate to prevent massive error payloads
+            'output' => substr($raw_output, 0, 500)
         ]);
         
     } catch (PDOException $e) {
@@ -216,10 +212,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['fetch_scan_id'])) {
 // ===========================================================================
 $page_title = 'Network Discovery';
 
-// Fetch scan history with STRICT RLS. 
+// Fetch scan history with STRICT RLS.
 // Ordered ASC (oldest first) to ensure the per-user counter (#1, #2, #3) is logical.
 if ($is_super_admin) {
-    // Explicitly select only the 6 columns needed for the UI to prevent DataTables mismatches
     $scan_history_query = "
         SELECT ns.scan_id, ns.scan_started, ns.scan_completed, ns.networks_scanned, ns.devices_found, ns.status 
         FROM network_scan ns 
@@ -251,7 +246,16 @@ include __DIR__ . '/includes/header.php';
             <h2 class="mb-0"><i class="bi bi-search me-2"></i>Network Discovery</h2>
             <p class="text-muted mb-0 mt-1">Adaptive scanning with historical delta tracking</p>
         </div>
-        <button id="runScanBtn" class="btn btn-primary"><i class="bi bi-radar me-1"></i> Run New Scan</button>
+        
+        <!-- UPDATED: Clean, simple button linking to the dedicated download page -->
+        <div class="d-flex gap-2" role="group" aria-label="Discovery and Deployment Actions">
+            <button id="runScanBtn" class="btn btn-primary" data-bs-toggle="tooltip" data-bs-title="Start a new network discovery scan">
+                <i class="bi bi-radar me-1"></i> Run New Scan
+            </button>
+            <a href="download.php" class="btn btn-success" data-bs-toggle="tooltip" data-bs-title="View all deployment options and instructions">
+                <i class="bi bi-download me-1"></i> Deploy Agent
+            </a>
+        </div>
     </div>
 
     <div class="alert alert-info d-flex align-items-start mb-4" role="alert">
@@ -271,27 +275,17 @@ include __DIR__ . '/includes/header.php';
             <div class="table-responsive">
                 <table class="table table-sm table-hover" id="scanHistoryTable" style="width:100%">
                     <thead class="table-dark">
-                        <tr>
-                            <th>Scan #</th>
-                            <th>Started</th>
-                            <th>Completed</th>
-                            <th>Networks</th>
-                            <th>Devices Found</th>
-                            <th>Status</th>
-                        </tr>
+                        <tr><th>Scan #</th><th>Started</th><th>Completed</th><th>Networks</th><th>Devices Found</th><th>Status</th></tr>
                     </thead>
                     <tbody>
                         <?php if (empty($scan_history)): ?>
                         <tr><td colspan="6" class="text-center text-muted py-3">No scan history found.</td></tr>
                         <?php else: ?>
                             <?php 
-                            // Per-user sequential counter for UX isolation
                             $user_scan_counter = 1;
                             foreach ($scan_history as $scan): 
                             ?>
-                            <tr style="cursor: pointer;" 
-                                data-scan-id="<?= (int)$scan['scan_id'] ?>" 
-                                title="Click to view results for Scan #<?= $user_scan_counter ?>">
+                            <tr style="cursor: pointer;" data-scan-id="<?= (int)$scan['scan_id'] ?>" title="Click to view results for Scan #<?= $user_scan_counter ?>">
                                 <td>#<?= $user_scan_counter ?></td>
                                 <td><?= date('d M Y, H:i', strtotime($scan['scan_started'])) ?></td>
                                 <td><?= $scan['scan_completed'] ? date('H:i', strtotime($scan['scan_completed'])) : '<span class="text-muted">In Progress</span>' ?></td>
@@ -337,15 +331,7 @@ include __DIR__ . '/includes/header.php';
                 <div class="table-responsive">
                     <table id="discoveryTable" class="table table-hover table-striped" style="width:100%">
                         <thead class="table-dark">
-                            <tr>
-                                <th>IP Address</th>
-                                <th>MAC Address</th>
-                                <th>Hostname</th>
-                                <th>Device Type</th>
-                                <th>Network Name</th>
-                                <th>VLAN</th>
-                                <th class="text-end">Actions</th>
-                            </tr>
+                            <tr><th>IP Address</th><th>MAC Address</th><th>Hostname</th><th>Device Type</th><th>Network Name</th><th>VLAN</th><th class="text-end">Actions</th></tr>
                         </thead>
                         <tbody></tbody>
                     </table>
@@ -362,6 +348,15 @@ include __DIR__ . '/includes/header.php';
 $(document).ready(function() {
     let historyTable = null;
     let discoveryTable = null;
+
+    // Initialize Bootstrap Tooltips for all elements with data-bs-toggle="tooltip"
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl, {
+            trigger: 'hover',
+            placement: 'auto'
+        });
+    });
 
     // Initialize History Table (Ascending order to match PHP counter)
     if ($('#scanHistoryTable').length > 0) {
@@ -409,6 +404,24 @@ $(document).ready(function() {
                         let rowClass = device.is_new ? 'table-success' : '';
                         let newBadge = device.is_new ? '<span class="badge bg-success ms-2">NEW</span>' : '';
 
+                        // SMART ANCHORING LOGIC: Detect OS and link directly to the correct section
+                        let deviceType = (device.device_type || '').toLowerCase();
+                        let anchor = '';
+
+                        if (deviceType.includes('windows')) {
+                            anchor = '#windows';
+                        } else if (deviceType.includes('linux') || deviceType.includes('pi') || deviceType.includes('debian')) {
+                            anchor = '#linux';
+                        } else if (deviceType.includes('mac') || deviceType.includes('apple')) {
+                            anchor = '#macos';
+                        } else if (deviceType.includes('freebsd') || deviceType.includes('unix')) {
+                            anchor = '#freebsd';
+                        }
+
+                        let deployBtn = `<a href="download.php${anchor}" class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" data-bs-title="View deployment options for ${device.device_type || 'this device'}">
+                                            <i class="bi bi-download me-1"></i> Deploy
+                                         </a>`;
+
                         tbody.append(`<tr class="${rowClass}">
                             <td><strong>${device.ip_address}</strong>${newBadge}</td>
                             <td><code>${device.mac_address || 'unknown'}</code></td>
@@ -416,11 +429,7 @@ $(document).ready(function() {
                             <td>${device.device_type || 'Unknown'}</td>
                             <td>${device.network_name || 'Unknown'}</td>
                             <td>${device.vlan_id || 'N/A'}</td>
-                            <td class="text-end">
-                                <button class="btn btn-sm btn-outline-primary" onclick="alert('Agent deployment is a stretch goal.')">
-                                    <i class="bi bi-download me-1"></i> Deploy
-                                </button>
-                            </td>
+                            <td class="text-end">${deployBtn}</td>
                         </tr>`);
                     });
 
@@ -429,6 +438,17 @@ $(document).ready(function() {
                         pageLength: 25,
                         destroy: true 
                     });
+                    
+                    // CRITICAL: Re-initialize Bootstrap Tooltips for dynamically created content
+                    var newTooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+                    newTooltipTriggerList.map(function (tooltipTriggerEl) {
+                        return new bootstrap.Tooltip(tooltipTriggerEl, {
+                            trigger: 'hover',
+                            placement: 'auto'
+                        });
+                    });
+                    
+                    console.log('✅ Re-initialized Bootstrap tooltips for dynamic content');
                 } else if (response.success) {
                     $('#noResultsState').removeClass('d-none');
                 } else {
@@ -462,10 +482,9 @@ $(document).ready(function() {
             type: 'POST', 
             data: { trigger_scan: true }, 
             dataType: 'json', 
-            timeout: 60000, // 60-second timeout for long network sweeps
+            timeout: 60000,
             success: function(response) {
                 if (response.success) {
-                    // Reload page to refresh the history table with the new scan record
                     window.location.reload();
                 } else {
                     $status.addClass('d-none');

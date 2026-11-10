@@ -1,8 +1,29 @@
 <?php
 /**
  * NetSentinel API Submission Endpoint
- * Receives, validates, and processes JSON telemetry payloads 
- * from Python endpoint agents.
+ * ================================================================================
+ *
+ * PURPOSE:
+ * Receives, validates, and processes JSON telemetry payloads from Python endpoint agents.
+ * It acts as the primary ingestion point for the SIEM-style architecture, handling 
+ * authentication, data validation, and normalized database insertion.
+ *
+ * ACADEMIC SIGNIFICANCE (Zero-Touch & Hybrid Working):
+ * - Supports Zero-Touch Auto-Registration: New devices can submit telemetry without 
+ *   pre-provisioning, lowering the barrier to entry for SME deployments.
+ * - Captures Network Context: Records privacy-preserving network classification 
+ *   (internal vs. remote) to provide visibility into hybrid-working patterns without 
+ *   storing sensitive public IP geolocation data (GDPR Data Minimization).
+ *
+ * SECURITY BOUNDARIES:
+ * - SR2 (Access Control): Validates Bearer tokens and prevents UUID spoofing.
+ * - SR3 (Input Validation): Strict JSON schema validation prevents malformed data injection.
+ * - SR4 (Data Integrity): Uses PDO prepared statements and database transactions to 
+ *   prevent SQL injection and ensure atomic data writes.
+ *
+ * @author Tim Sansom
+ * @version 1.3 (Updated for MAC address capture and Privacy-Preserving Network Context)
+ * @date 2026
  */
 
 // 1. Enforce JSON response and POST method only
@@ -18,23 +39,26 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/findings.php'; // Stateful finding logic
 
-// 3. SR2: AUTHENTICATE - Validate Bearer token
-// Prevents unauthorized devices from injecting fake telemetry.
-$authenticated_device_uuid = authenticate_api_request($pdo);
-
-// 4. SR3: VALIDATE - Parse and validate JSON payload
-// Ensures malformed data doesn't crash the PHP parser or DB.
-$payload = validate_json_payload();
-
-// 5. SECURITY CHECK: Prevent UUID Spoofing
-// Ensures the authenticated token matches the payload's claimed identity.
-if ($payload['device_uuid'] !== $authenticated_device_uuid) {
-    http_response_code(403);
-    echo json_encode(["status" => "error", "message" => "Token and payload device mismatch"]);
-    exit;
-}
-
 try {
+    // 3. VALIDATE PAYLOAD FIRST (So we have the UUID for the auth check)
+    // Ensures malformed data doesn't crash the PHP parser or DB.
+    $payload = validate_json_payload();
+
+    // 4. AUTHENTICATE (Pass payload UUID to enable auto-registration fallback)
+    // Prevents unauthorized devices from injecting fake telemetry.
+    $auth_result = authenticate_api_request($pdo, $payload['device_uuid']);
+
+    // 5. SECURITY CHECK: Prevent UUID Spoofing
+    // Ensures the authenticated token matches the payload's claimed identity.
+    if ($payload['device_uuid'] !== $auth_result['device_uuid']) {
+        http_response_code(403);
+        echo json_encode(["status" => "error", "message" => "Token and payload device mismatch"]);
+        exit;
+    }
+
+    // Capture the connecting IP address (Crucial for hybrid-working visibility and audit trails)
+    $connecting_ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+
     // 6. DATA INTEGRITY: Start a database transaction
     // Ensures that if any part of the complex insert fails, the entire run is rolled back.
     // This prevents "ghost" check runs with missing findings.
@@ -46,18 +70,22 @@ try {
     $device = $stmt->fetch();
 
     if ($device) {
+        // Existing Device: Update last seen timestamp AND the connecting IP
         $device_id = $device['device_id'];
-        $updateStmt = $pdo->prepare("UPDATE device SET last_seen_at = CURRENT_TIMESTAMP WHERE device_id = :id");
-        $updateStmt->execute(['id' => $device_id]);
+        $updateStmt = $pdo->prepare("UPDATE device SET last_seen_at = CURRENT_TIMESTAMP, ip_address = :ip WHERE device_id = :id");
+        $updateStmt->execute(['ip' => $connecting_ip, 'id' => $device_id]);
     } else {
-        // New device registration
-        $insertStmt = $pdo->prepare("INSERT INTO device (device_uuid, hostname, os_family, os_version, current_health_status)
-                                     VALUES (:uuid, :hostname, :os_family, :os_version, 'unknown')");
+        // New device registration (Zero-Touch Auto-Registration)
+        $token_hash = hash('sha256', $auth_result['token']);
+        $insertStmt = $pdo->prepare("INSERT INTO device (device_uuid, hostname, os_family, os_version, current_health_status, token_hash, is_active, ip_address)
+                                     VALUES (:uuid, :hostname, :os_family, :os_version, 'unknown', :token_hash, 1, :ip)");
         $insertStmt->execute([
             'uuid' => $payload['device_uuid'],
             'hostname' => 'unknown', // Updated dynamically by system_info check below
             'os_family' => 'unknown',
-            'os_version' => 'unknown'
+            'os_version' => 'unknown',
+            'token_hash' => $token_hash,
+            'ip' => $connecting_ip
         ]);
         $device_id = (int) $pdo->lastInsertId();
     }
@@ -91,15 +119,32 @@ try {
         // Route data to normalised finding tables based on check type
         switch ($check_name) {
             case 'system_info':
-                // Update device metadata dynamically
-                $sysStmt = $pdo->prepare("UPDATE device SET hostname = :hostname, os_family = :os_family,
-                                          os_version = :os_version WHERE device_id = :id");
+                // Extract the new privacy-preserving network data from the payload
+                $mac_address = $details['mac_address'] ?? null;
+                $network_context = $details['network_context'] ?? 'unknown';
+                $ip_address = $details['ip_address'] ?? null;
+
+                // Update device metadata dynamically (including MAC and Network Context)
+                // This implements the Privacy vs. Utility trade-off by storing the 
+                // network context classification rather than raw public IP addresses
+                $sysStmt = $pdo->prepare("UPDATE device SET 
+                                          hostname = :hostname, 
+                                          os_family = :os_family,
+                                          os_version = :os_version,
+                                          ip_address = :ip_address,
+                                          mac_address = :mac_address,
+                                          network_context = :network_context 
+                                          WHERE device_id = :id");
                 $sysStmt->execute([
                     'hostname' => $details['hostname'] ?? 'unknown',
                     'os_family' => $details['os_family'] ?? 'unknown',
                     'os_version' => $details['os_version'] ?? 'unknown',
+                    'ip_address' => $ip_address,
+                    'mac_address' => $mac_address,
+                    'network_context' => $network_context,
                     'id' => $device_id
                 ]);
+
                 // Insert historical system snapshot
                 $sysFindStmt = $pdo->prepare("INSERT INTO system_finding (check_run_id, hostname, os_name, os_version, architecture, uptime_seconds)
                                               VALUES (:check_run_id, :hostname, :os_name, :os_version, :arch, :uptime)");

@@ -7,6 +7,11 @@
  * This page demonstrates secure data retrieval (SR2, SR3), XSS prevention (SR4), 
  * and performance optimization (NFR1) by using a single UNION ALL query to fetch 
  * heterogeneous findings, minimizing database round-trips.
+ * 
+ * UPDATED: Now displays MAC Address and Privacy-Preserving Network Context.
+ * This visualizes the "Privacy vs. Utility" design trade-off, providing admins 
+ * with network location context (Internal vs. Remote) without storing sensitive 
+ * public IP geolocation data, satisfying GDPR data minimization principles.
  */
 
 // SECURITY (SR2): Enforce session validation immediately to prevent unauthorized access.
@@ -147,7 +152,7 @@ try {
                 <div class="card card-body bg-light small">
                     <p class="mb-2"><strong>How to use this page:</strong></p>
                     <ul class="mb-0">
-                        <li><strong>Device Information:</strong> Review the OS version, architecture, and last check-in time to verify the device is properly configured and communicating.</li>
+                        <li><strong>Device Information:</strong> Review the OS version, architecture, MAC address, and network context to verify the device's location and configuration.</li>
                         <li><strong>Network Latency Trend:</strong> Monitor the line chart to identify connectivity issues or network degradation over time.</li>
                         <li><strong>Security Findings:</strong> Use the table to see all port, firewall, and patch-related issues. Filter by type or search for specific findings.</li>
                         <li><strong>Severity Badges:</strong> Red (Critical/High) findings require immediate attention. Yellow (Medium) should be addressed soon.</li>
@@ -182,6 +187,30 @@ try {
                 <div class="col-md-6 mb-3">
                     <strong>IP Address:</strong> <?= htmlspecialchars($device['ip_address'] ?? 'N/A') ?>
                 </div>
+                
+                <!-- NEW: MAC Address Display -->
+                <div class="col-md-6 mb-3">
+                    <strong>MAC Address:</strong> 
+                    <code><?= htmlspecialchars($device['mac_address'] ?? 'N/A') ?></code>
+                    <i class="bi bi-info-circle text-muted ms-1" data-bs-toggle="tooltip" title="Collected for administrative utility (e.g., Network Access Control and IP binding)"></i>
+                </div>
+
+                <!-- NEW: Network Context Display (Privacy vs Utility Trade-off) -->
+                <div class="col-md-6 mb-3">
+                    <strong>Network Context:</strong>
+                    <?php 
+                    $ctx = $device['network_context'] ?? 'unknown';
+                    if ($ctx === 'internal') {
+                        echo '<span class="badge bg-primary" data-bs-toggle="tooltip" title="Connected via private RFC1918 network (e.g., Office/Home LAN)">Internal / Office</span>';
+                    } elseif ($ctx === 'remote') {
+                        echo '<span class="badge bg-warning text-dark" data-bs-toggle="tooltip" title="Connected via public IP (e.g., Remote Broadband)">Remote / Home</span>';
+                    } else {
+                        echo '<span class="badge bg-secondary">Unknown</span>';
+                    }
+                    ?>
+                    <i class="bi bi-info-circle text-muted ms-1" data-bs-toggle="tooltip" title="Determines location context without storing sensitive public IP geolocation data (GDPR Data Minimization)"></i>
+                </div>
+
                 <div class="col-md-6 mb-3">
                     <strong>Device UUID:</strong> <code><?= htmlspecialchars($device['device_uuid']) ?></code>
                 </div>
