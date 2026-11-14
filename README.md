@@ -18,7 +18,7 @@
 
 
 
-> A lightweight, modular Security Information and Event Management (SIEM) system built as a university dissertation project. NetSentinel combines Python-based monitoring agents with a real-time PHP web dashboard and MongoDB storage to detect, log, and visualise network threats.
+> A lightweight, modular Security Information and Event Management (SIEM) system built as a university dissertation project. NetSentinel combines cross-platform Python monitoring agents with a real-time PHP/MySQL web dashboard to detect, log, and visualise endpoint security health and network threats.
 
 </div>
 ## 🖼️ Visual Showcase
@@ -126,7 +126,7 @@ The system operates through distributed **Python agents** that monitor host secu
 - 🔍 **Real-Time Event Monitoring** — Lightweight agents continuously capture system and network events
 - 🚨 **Alerting Engine** — Rule-based alert generation for common threat signatures (port scans, brute force, suspicious processes)
 - 📊 **Interactive Dashboard** — PHP/HTML5 frontend for live event stream, alert triaging, and statistics
-- 🗄️ **MongoDB Storage** — Flexible schema for heterogeneous log ingestion and fast querying
+- 🗄️ MySQL Storage — Normalised relational schema with Row-Level Security (RLS) for multi-tenant isolation
 - 🤖 **Modular Agent Design** — Plug-in architecture allows new detection modules to be added without modifying core code
 - 🌐 **Multi-Host Support** — Agents can be deployed across multiple hosts, all reporting to a central collector
 - 📈 **Visualisations** — Charts and graphs for event trends, top talkers, and alert severity distribution
@@ -211,14 +211,6 @@ Set your DocumentRoot to /var/www/html/netsentinel/public.
 
 4. Install Agent Dependencies (on endpoints):
    pip install requests psutil schedule python-dotenv
-
-### Prerequisites
-
-- Python 3.10+
-- PHP 8.x with MongoDB extension (`mongodb` PECL extension)
-- MongoDB 6.x (local or Atlas)
-- Composer (PHP dependency manager)
-- pip & virtualenv
 
 ***
 
