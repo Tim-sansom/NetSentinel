@@ -1,6 +1,11 @@
 # NetSentinel
 <div align="center">
 
+[![PHP Version](https://img.shields.io/badge/PHP-8.3-777BB4?style=for-the-badge&logo=php&logoColor=white)](https://www.php.net/)
+[![MySQL](https://img.shields.io/badge/MySQL-8.0-00758F?style=for-the-badge&logo=mysql&logoColor=white)](https://www.mysql.com/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
+
 <img src="https://user-gen-media-assets.s3.amazonaws.com/gpt4o_images/22fc0602-2220-41f9-ac4e-1736934532a0.png" alt="NetSentinel logo" width="180">
 
 # 🛡️ NetSentinel
@@ -16,7 +21,80 @@
 > A lightweight, modular Security Information and Event Management (SIEM) system built as a university dissertation project. NetSentinel combines Python-based monitoring agents with a real-time PHP web dashboard and MongoDB storage to detect, log, and visualise network threats.
 
 </div>
+## 🖼️ Visual Showcase
 
+<div align="center">
+
+<details>
+<summary><strong>Click to expand the application gallery</strong></summary>
+<br>
+
+<table>
+  <tr>
+    <td align="center">
+      <img src="screenshots/Security Overview - NetSentinel.png" alt="Netsentinel Dashboard" style="border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); width: 100%; max-width: 800px;">
+      <br><em>Network topology, health metrics, and active threat indicators</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="screenshots/Endpoint Devices - NetSentinel.png" alt="Devicess Page" style="border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); width: 100%; max-width: 800px; margin-top: 20px;">
+      <br><em>View and manage all monitored devices in your network</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="screenshots/Recent Alerts - NetSentinel.png" alt="Alets Page" style="border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); width: 100%; max-width: 800px; margin-top: 20px;">
+      <br><em>Review and prioritize potential security risks on your endpoints</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="screenshots/Anomalies & Risks - NetSentinel.png" alt="Anomalies & Risks Page" style="border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); width: 100%; max-width: 800px; margin-top: 20px;">
+      <br><em>Identify potential security issues before they become breaches</em>
+    </td>
+  </tr>
+   <tr>
+    <td align="center">
+      <img src="screenshots/Network Discovery - NetSentinel.png" alt="Network Discovery" style="border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); width: 100%; max-width: 800px; margin-top: 20px;">
+      <br><em>Adaptive scanning with historical delta tracking</em>
+    </td>
+  </tr>
+   <tr>
+    <td align="center">
+      <img src="screenshots/Threat Intelligence - NetSentinel.png" alt="Threat Intelligence" style="border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); width: 100%; max-width: 800px; margin-top: 20px;">
+      <br><em>Track known exploited vulnerabilities to prioritize your patching efforts</em>
+    </td>
+  </tr>
+   <tr>
+    <td align="center">
+      <img src="screenshots/Policy Management - NetSentinel.png" alt="Policy Management" style="border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); width: 100%; max-width: 800px; margin-top: 20px;">
+      <br><em>Organise endpoints and automate security compliance checks</em>
+    </td>
+  </tr>
+   <tr>
+    <td align="center">
+      <img src="screenshots/Audit Logs - NetSentinel.png" alt="Audit Logs" style="border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); width: 100%; max-width: 800px; margin-top: 20px;">
+      <br><em>Track user activity, system changes, and security events for compliance</em>
+    </td>
+  </tr>
+   <tr>
+    <td align="center">
+      <img src="screenshots/User Audit - NetSentinel.png" alt="User Audit" style="border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); width: 100%; max-width: 800px; margin-top: 20px;">
+      <br><em>Admin user audit area to edit and delete end users</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="screenshots/Server Telemetry - NetSentinel.png" alt="Server Telemetry" style="border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); width: 100%; max-width: 800px; margin-top: 20px;">
+      <br><em>Server Telemetry and stats.</em>
+    </td>
+  </tr>
+</table>
+
+</details>
+
+</div>
 ***
 
 ## 📑 Table of Contents
@@ -37,9 +115,9 @@
 
 ## Overview
 
-NetSentinel is a university dissertation project that implements a lightweight SIEM (Security Information and Event Management) solution designed for resource-constrained environments. Unlike enterprise SIEM platforms, NetSentinel focuses on simplicity, extensibility, and real-time visibility — making it suitable for small networks, research labs, and educational settings.
+NetSentinel is a university dissertation project that implements a lightweight SIEM (Security Information and Event Management) solution designed for resource-constrained SME environments. Unlike enterprise SIEM platforms, NetSentinel focuses on simplicity, extensibility, and real-time visibility.
 
-The system operates through distributed Python agents that monitor hosts and network traffic, forwarding structured event data to a central MongoDB database. A PHP-powered web dashboard provides analysts with live event feeds, alert management, and basic threat visualisations.
+The system operates through distributed **Python agents** that monitor host security posture (ports, firewall, patches, latency) and forward structured JSON telemetry to a central **PHP/MySQL backend**. A **Bootstrap-powered web dashboard** provides analysts with live device health, alert management, and threat intelligence visualisations.
 
 ***
 
@@ -58,32 +136,31 @@ The system operates through distributed Python agents that monitor hosts and net
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                        NetSentinel                              │
 │                                                                 │
-│  ┌──────────────┐   ┌──────────────┐   ┌──────────────────┐   │
-│  │  Agent Host 1│   │  Agent Host 2│   │  Agent Host N... │   │
-│  │  (Python)    │   │  (Python)    │   │  (Python)        │   │
-│  └──────┬───────┘   └──────┬───────┘   └────────┬─────────┘   │
-│         │                  │                     │             │
-│         └──────────────────┼─────────────────────┘             │
-│                            │ JSON Events (HTTP/TCP)             │
-│                     ┌──────▼──────┐                            │
-│                     │  Collector  │                            │
-│                     │  (Python)   │                            │
-│                     └──────┬──────┘                            │
-│                            │                                   │
-│                     ┌──────▼──────┐                            │
-│                     │   MongoDB   │                            │
-│                     │  (events /  │                            │
-│                     │   alerts)   │                            │
-│                     └──────┬──────┘                            │
-│                            │                                   │
-│                     ┌──────▼──────┐                            │
-│                     │  Dashboard  │                            │
-│                     │  (PHP/HTML) │                            │
-│                     └─────────────┘                            │
+│  ┌──────────────┐   ┌──────────────┐   ┌──────────────────┐     │
+│  │  Endpoint 1  │   │  Endpoint 2  │   │  Endpoint N...   │     │
+│  │ (Python Agent│   │ (Python Agent│   │ (Python Agent)   │     │
+│  └──────┬───────┘   └──────┬───────┘   └────────┬─────────┘     │
+│         │                  │                     │              │
+│         └──────────────────┼─────────────────────┘              │
+│                            │ HTTPS JSON (Telemetry)             │
+│                     ┌──────▼──────┐                             │
+│                     │  PHP API    │                             │
+│                     │ (submit.php)│                             │
+│                     └──────┬──────┘                             │
+│                            │                                    │
+│                     ┌──────▼──────┐                             │
+│                     │   MySQL 8   │                             │
+│                     │  (Database) │                             │
+│                     └──────┬──────┘                             │
+│                            │                                    │
+│                     ┌──────▼──────┐                             │
+│                     │  Dashboard  │                             │
+│                     │ (PHP/HTML5) │                             │
+│                     └─────────────┘                             │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -91,19 +168,49 @@ The system operates through distributed Python agents that monitor hosts and net
 
 ## Tech Stack
 
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| Monitoring Agents | Python 3.10+ | Host & network event collection |
-| Collector | Python (Flask / raw socket) | Centralised event ingestion |
-| Database | MongoDB 6.x | Event & alert storage |
-| Dashboard Backend | PHP 8.x | REST API & server-side rendering |
-| Dashboard Frontend | HTML5 / CSS3 / JavaScript /Ajax| Real-time UI |
-| Charting | Chart.js | Dashboard visualisations |
-| Agent Modules | Python (psutil, scapy, etc.) | Pluggable detection modules |
+| Component               | Technology.         | Purpose.                                    |
+| :---------------------- | :------------------ | :------------------------------------------ |
+| **Monitoring Agents**   | Python 3.10+        | Host & network event collection             |
+| **Backend API**         | PHP 8.3             | REST API & server-side logic                |
+| **Database**            | MySQL 8.0           | Telemetry, device tracking, and user data   |
+| **Dashboard Frontend**  | Bootstrap 5 / HTML5 | Responsive UI and layout                    |
+| **Visualisations**      | Chart.js            | Line/bar charts for trends and metrics      |
+| **Data Tables**         | DataTables.js       | Sortable/filterable device and alert tables |
+| **Threat Feed**         | CISA KEV (JSON)     | Live vulnerability intelligence             |
 
 ***
 
-## Getting Started
+
+
+## Getting Started (Manual LAMP)
+
+If you prefer to run NetSentinel on a native Linux server (e.g., Ubuntu/Debian):
+
+### Prerequisites
+- Apache 2.4+
+- PHP 8.3+ (with `pdo_mysql`, `gd`, `zip` extensions)
+- MySQL 8.0+
+- Python 3.10+ (for agents)
+
+### Installation Steps
+
+1. **Clone and Setup Web Root:**
+   ```bash
+   git clone https://github.com/Tim-sansom/NetSentinel.git /var/www/html/netsentinel
+
+2. Configure Apache:
+Set your DocumentRoot to /var/www/html/netsentinel/public.
+
+  ```bash
+   sudo a2enmod rewrite
+   sudo systemctl restart apache2
+
+3. Database Setup:
+  Create a MySQL database and user, then import the schema from db-init/init.sql.
+  Update public/includes/db.php with your credentials.
+
+4. Install Agent Dependencies (on endpoints):
+   pip install requests psutil schedule python-dotenv
 
 ### Prerequisites
 
@@ -113,78 +220,6 @@ The system operates through distributed Python agents that monitor hosts and net
 - Composer (PHP dependency manager)
 - pip & virtualenv
 
-### Installation
-
-1. **Clone the repository**
-
-```bash
-git clone https://github.com/<your-username>/netsentinel.git
-cd netsentinel
-```
-
-2. **Set up the Python environment**
-
-```bash
-cd agent
-python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-3. **Configure MongoDB**
-
-```bash
-# Start MongoDB locally (or update config with your Atlas URI)
-mongod --dbpath /data/db
-```
-
-4. **Configure the dashboard**
-
-```bash
-cd ../dashboard
-composer install
-cp config/config.example.php config/config.php
-# Edit config/config.php with your MongoDB connection string
-```
-
-5. **Start the collector**
-
-```bash
-cd ../collector
-python collector.py
-```
-
-6. **Deploy an agent**
-
-```bash
-cd ../agent
-python agent.py
-```
-
-7. **Serve the dashboard**
-
-```bash
-# Using PHP's built-in server for development:
-cd ../dashboard
-php -S localhost:8080
-```
-
-Open `http://localhost:8080` in your browser.
-
-***
-
-## Configuration
-
-All configuration is managed through environment variables or config files:
-
-| Parameter | File | Description |
-|-----------|------|-------------|
-| `MONGO_URI` | `config/config.php` | MongoDB connection string |
-| `COLLECTOR_HOST` | `agent/config.yaml` | IP/hostname of the collector |
-| `COLLECTOR_PORT` | `agent/config.yaml` | Collector listening port (default: `5140`) |
-| `ALERT_RULES_PATH` | `collector/config.yaml` | Path to YAML alert rules file |
-| `LOG_LEVEL` | `collector/config.yaml` | Logging verbosity (`DEBUG`, `INFO`, `WARNING`) |
-
 ***
 
 ## Project Structure
@@ -192,58 +227,92 @@ All configuration is managed through environment variables or config files:
 ```
 netsentinel/
 │
-├── agent/                   # Python monitoring agents
-│   ├── agent.py             # Main agent entry point
-│   ├── modules/             # Detection modules (network, process, auth…)
-│   │   ├── network_monitor.py
-│   │   ├── process_monitor.py
-│   │   └── auth_monitor.py
-│   ├── config.yaml          # Agent configuration
-│   └── requirements.txt
+├── agent/ # Python monitoring agents
+│ ├── agent.py # Main agent entry point
+│ ├── checks/ # Detection modules (port, firewall, patch…)
+│ ├── config.py # Agent configuration manager
+│ └── api_client.py # HTTPS communication handler
 │
-├── collector/               # Central event collector
-│   ├── collector.py         # Ingestion & alert engine
-│   ├── rules/               # YAML-based detection rules
-│   └── config.yaml
+├── public/ # PHP Web Dashboard (DocumentRoot)
+│ ├── index.php # Main dashboard view
+│ ├── api/ # REST API endpoints (submit.php, stats.php)
+│ ├── includes/ # Core logic (db.php, auth.php, audit.php)
+│ └── assets/ # CSS / JS / Chart.js
 │
-├── dashboard/               # PHP web dashboard
-│   ├── index.php            # Main dashboard view
-│   ├── api/                 # REST API endpoints
-│   ├── views/               # HTML templates
-│   ├── assets/              # CSS / JS / Chart.js
-│   └── config/
-│       ├── config.example.php
-│       └── config.php       # (git-ignored)
+├── cronjobs/ # Background maintenance scripts
+│ └── update_threat_feed.php # CISA KEV ingester
 │
-├── docs/                    # Dissertation documentation
-│   └── architecture.md
+├── docker/ # Containerization files
+│ ├── Dockerfile
+│ ├── docker-compose.yml
+│ └── start.sh
 │
-├── tests/                   # Unit & integration tests
+├── db-init/ # Database schema initialization
 │
-├── .gitignore
-├── README.md
-└── LICENSE
+├── docs/ # Dissertation documentation
+│
+└── README.md
 ```
 
 ***
+### Docker
 
-## Screenshots
+```
 
-> _Dashboard screenshots will be added here as the project develops._
+🚀 Getting Started (Docker)
+The recommended way to run NetSentinel is via Docker Compose. This abstracts away the LAMP stack configuration and ensures a reproducible environment.
+Prerequisites
+Docker Desktop installed and running.
 
+**Quick Start**
+
+1. **Clone the repository:**
+
+     git clone https://github.com/Tim-sansom/NetSentinel.git
+   cd netsentinel
+
+2. **Configure Environment:**
+Copy the example environment file. You can edit it to change default passwords if desired.
+
+     cp .env.example .env
+
+3. **Start the Stack:**
+Build and launch the containers (Web, MySQL, and Worker).
+
+    docker-compose up -d --build
+
+4. **Access the Dashboard:**
+
+  Open your browser and navigate to:
+
+    👉 http://localhost:8080 (or the port specified in your docker-compose.yml)
+
+## Configuration
+
+All sensitive configuration is managed through environment variables or `.env` files.
+
+| Parameter             | File              | Description                                              |
+| :---------------------| :---------------- | :------------------------------------------------------- |
+| `DB_HOST`             | `.env` / `db.php` | MySQL hostname (default: `localhost` or `db` for Docker) |
+| `DB_NAME`             | `.env` / `db.php` | Database name                                            |
+| `DB_USER`             | `.env` / `db.php` | Database username                                        |
+| `DB_PASS`             | `.env` / `db.php` | Database password                                        |
+| `NETSENTINEL_API_URL` | `agent/.env`      | URL where agents send telemetry                          |
+
+```
 ***
 
 ## Roadmap
 
 - [x] Core agent framework with pluggable modules
-- [x] Central collector with MongoDB persistence
-- [x] PHP dashboard with live event stream
-- [ ] Role-based access control (RBAC) for dashboard
+- [x] PHP/MySQL backend with REST API
+- [x] Bootstrap dashboard with live event stream
+- [x] Role-based access control (RBAC) & Row-Level Security
+- [x] CISA KEV Threat Intelligence integration
+- [x] Cross-platform agent support (Windows/Linux/macOS)
+- [x] Docker Compose deployment
 - [ ] Email / webhook alerting integrations
-- [ ] Anomaly detection using statistical baselines
-- [ ] Docker Compose deployment
 - [ ] Agent auto-update mechanism
-- [ ] Expanded detection rules library
 
 ***
 

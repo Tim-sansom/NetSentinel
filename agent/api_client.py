@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 
 class ApiClient:
     """
-    A robust HTTP client for communicating with the NetSentinel backend.
+    A robust HTTP client for communicating with NetSentinel backend.
     
     Uses a persistent requests.Session to reuse TCP connections and 
     automatically inject authentication headers into every request.
@@ -26,19 +26,16 @@ class ApiClient:
     def __init__(self, api_url: str, api_token: str, timeout: int = 30, verify_ssl: bool = True):
         """
         Initialize the API client.
-        
-        Args:
-            api_url: The base URL of the backend API (e.g., 'https://192.168.1.10/api').
-            api_token: The bearer token for authenticating the agent.
-            timeout: The maximum time in seconds to wait for a server response.
-            verify_ssl: If False, disables SSL certificate verification. 
-                        Used primarily for local lab environments with self-signed certs.
         """
         self.api_url = api_url.rstrip('/')
         self.api_token = api_token
         self.timeout = timeout
         self.verify_ssl = verify_ssl
         
+        # CRITICAL: Validate that credentials were actually loaded from .env
+        if not self.api_token or not self.api_url:
+            raise ValueError("CRITICAL: API Token or URL is empty. Check your .env file and config loading.")
+
         # Set up a persistent session with standard headers
         self.session = requests.Session()
         self.session.headers.update({
@@ -47,7 +44,7 @@ class ApiClient:
             'User-Agent': 'NetSentinel-Agent/1.0.0'
         })
         
-        # Suppress the noisy InsecureRequestWarning if the user has disabled SSL verification
+        # Suppress the noisy InsecureRequestWarning if SSL verification is disabled
         if not verify_ssl:
             import urllib3
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -59,17 +56,6 @@ class ApiClient:
     ) -> Dict[str, Any]:
         """
         Submit a batch of security check results to the backend API.
-        
-        Args:
-            device_uuid: The unique identifier for the endpoint device.
-            check_results: A list of dictionaries containing the telemetry data.
-            
-        Returns:
-            The parsed JSON response from the API.
-            
-        Raises:
-            requests.RequestException: If there is a network-level failure.
-            ValueError: If the API returns a logical error or malformed JSON.
         """
         payload = {
             'device_uuid': device_uuid,
@@ -78,6 +64,15 @@ class ApiClient:
         }
         
         url = f'{self.api_url}/submit.php'
+        
+        # --- TEMPORARY DEBUG PRINTS TO SOLVE THE 403 MYSTERY ---
+        print("\n" + "="*70)
+        print("DEBUG: API SUBMISSION ATTEMPT")
+        print(f"DEBUG URL: {url}")
+        print(f"DEBUG HEADERS: {dict(self.session.headers)}")
+        print(f"DEBUG PAYLOAD UUID: {payload.get('device_uuid')}")
+        print("="*70 + "\n")
+        # -------------------------------------------------------
         
         try:
             response = self.session.post(
@@ -104,7 +99,6 @@ class ApiClient:
             return result
             
         except requests.exceptions.SSLError as e:
-            # Provide a helpful hint if SSL fails, as this is common in lab setups
             raise requests.exceptions.SSLError(
                 f"SSL certificate verification failed. "
                 f"Ensure the server has a valid certificate or set verify_ssl=False in config. "
@@ -123,9 +117,6 @@ class ApiClient:
     def test_connection(self) -> bool:
         """
         Perform a lightweight health check against the API endpoint.
-        
-        Returns:
-            True if the server responds with a 200 (OK) or 405 (Method Not Allowed).
         """
         url = f'{self.api_url}/submit.php'
         

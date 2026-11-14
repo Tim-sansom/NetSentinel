@@ -56,23 +56,23 @@ Stage 8: Hardening & Security
 [x] Basic security review (OWASP top 10 checks)
 
 Stage 9: Integration Testing
-[ ] Run full end-to-end pipeline test
-[ ] Fix integration issues (Agent -> API -> DB -> Dashboard)
-[ ] Capture screenshots and technical notes
+[x] Run full end-to-end pipeline test
+[x] Fix integration issues (Agent -> API -> DB -> Dashboard)
+[x] Capture screenshots and technical notes
 
 Stage 10: Evaluation Execution
-[ ] Finalize test scenarios and lab snapshots
-[ ] Prepare results/metrics sheet
-[ ] Measure latency and resource use (Endpoints & Server)
-[ ] Run scenarios and record findings
+[x] Finalize test scenarios and lab snapshots
+[x] Prepare results/metrics sheet
+[x] Measure latency and resource use (Endpoints & Server)
+[x] Run scenarios and record findings
 
 Stage 11: Evidence Capture & Documentation
-[ ] Export logs and SQL data for appendix
-[ ] Save screenshots and evidence
-[ ] Organise dissertation appendix evidence
+[x] Export logs and SQL data for appendix
+[x] Save evidence
+[x] Organise dissertation appendix evidence
 
 Stage 12: Final Build Polish & Submission
-[ ] Fix final bugs
-[ ] Clean code, add comments, and update README
-[ ] Prepare final build handover (ZIP/Git tag)
-[ ] SUBMISSION
+[x] Fix final bugs
+[x] Clean code, add comments, and update README
+[x] Prepare final build handover (ZIP/Git tag)
+[x] SUBMISSION

@@ -21,14 +21,12 @@
  *   JSON payloads to the underlying OS shell.
  *
  * @author Tim Sansom
- * @version 1.0
+ * @version 1.2 (Fixed DataTables column-count crash on empty scan history)
  * @date 2026
  */
-
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
-
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/db.php';
 
@@ -54,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['trigger_scan'])) {
     // Clear output buffers to ensure a clean JSON response
     while (ob_get_level()) { ob_end_clean(); }
     header('Content-Type: application/json');
-    
+
     try {
         // STEP 1: Fetch networks with STRICT Row-Level Security (RLS)
         if ($is_super_admin) {
@@ -69,10 +67,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['trigger_scan'])) {
             $stmt->execute([$user_group_id]);
         }
         $networks = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        if (empty($networks)) { 
-            echo json_encode(['success' => false, 'error' => 'No networks configured for your group.']); 
-            exit(0); 
+
+        if (empty($networks)) {
+            echo json_encode(['success' => false, 'error' => 'No networks configured for your group.']);
+            exit(0);
         }
 
         // STEP 2: Create audit record for the scan session
@@ -84,10 +82,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['trigger_scan'])) {
         $script_path = __DIR__ . '/../scripts/discovery.py';
         $python_path = '/usr/bin/python3';
         $networks_json = json_encode($networks);
-
         // SR3: escapeshellarg() is critical here to prevent OS command injection
         $cmd = "$python_path $script_path " . escapeshellarg($networks_json);
-        $output = []; 
+        $output = [];
         $return_var = 0;
         exec($cmd, $output, $return_var);
         $raw_output = implode("\n", $output);
@@ -100,42 +97,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['trigger_scan'])) {
                 foreach ($result as $device) {
                     $vlan_val = $device['vlan_id'] ?? null;
                     if ($vlan_val === 'N/A' || !is_numeric($vlan_val)) $vlan_val = null;
-                    
+
                     $insert_stmt = $pdo->prepare("
                         INSERT INTO network_scan_result 
-                        (scan_id, ip_address, mac_address, hostname, device_type, network_name, vlan_id, first_seen, last_seen, is_active) 
+                        (scan_id, ip_address, mac_address, hostname, device_type, network_name, vlan_id, first_seen, last_seen, is_active)
                         VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)
                     ");
                     if ($insert_stmt->execute([
-                        $scan_id, $device['ip'] ?? '', $device['mac'] ?? 'unknown', 
-                        $device['hostname'] ?? 'unknown', $device['device_type'] ?? 'Unknown', 
-                        $device['network_name'] ?? 'Unknown', $vlan_val
+                        $scan_id,
+                        $device['ip'] ?? '',
+                        $device['mac'] ?? 'unknown',
+                        $device['hostname'] ?? 'unknown',
+                        $device['device_type'] ?? 'Unknown',
+                        $device['network_name'] ?? 'Unknown',
+                        $vlan_val
                     ])) {
                         $devices_saved++;
                     }
                 }
-
                 // Update scan session status to completed
                 $pdo->prepare("UPDATE network_scan SET status = 'completed', scan_completed = NOW(), devices_found = ? WHERE scan_id = ?")
                     ->execute([$devices_saved, $scan_id]);
-                
+
                 echo json_encode([
-                    'success' => true, 
-                    'message' => "Scan completed. Found {$devices_saved} devices.", 
-                    'devices' => $result, 
+                    'success' => true,
+                    'message' => "Scan completed. Found {$devices_saved} devices.",
+                    'devices' => $result,
                     'scan_id' => $scan_id
                 ]);
                 exit(0);
             }
         }
-        
+
         // Handle script failure
         echo json_encode([
-            'success' => false, 
-            'error' => "Script failed (Exit code: $return_var).", 
+            'success' => false,
+            'error' => "Script failed (Exit code: $return_var).",
             'output' => substr($raw_output, 0, 500)
         ]);
-        
+
     } catch (PDOException $e) {
         error_log("Discovery DB Error: " . $e->getMessage());
         echo json_encode(['success' => false, 'error' => "Database error: " . $e->getMessage()]);
@@ -160,8 +160,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['fetch_scan_id'])) {
         }
         $check_stmt = $pdo->prepare($check_sql);
         $check_stmt->execute($check_params);
-        
         if (!$check_stmt->fetch()) {
+            // This error triggers if the user clicks a scan they don't own
             echo json_encode(['success' => false, 'error' => 'Access denied or scan not found.']);
             exit(0);
         }
@@ -174,7 +174,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['fetch_scan_id'])) {
             $prev_params[] = $current_user_id;
         }
         $prev_sql .= " ORDER BY scan_id DESC LIMIT 1";
-        
         $prev_stmt = $pdo->prepare($prev_sql);
         $prev_stmt->execute($prev_params);
         $prev_scan = $prev_stmt->fetch(PDO::FETCH_ASSOC);
@@ -216,16 +215,16 @@ $page_title = 'Network Discovery';
 // Ordered ASC (oldest first) to ensure the per-user counter (#1, #2, #3) is logical.
 if ($is_super_admin) {
     $scan_history_query = "
-        SELECT ns.scan_id, ns.scan_started, ns.scan_completed, ns.networks_scanned, ns.devices_found, ns.status 
-        FROM network_scan ns 
+        SELECT ns.scan_id, ns.scan_started, ns.scan_completed, ns.networks_scanned, ns.devices_found, ns.status
+        FROM network_scan ns
         ORDER BY ns.scan_started ASC
     ";
     $scan_history = $pdo->query($scan_history_query)->fetchAll(PDO::FETCH_ASSOC);
 } else {
     $scan_history_query = "
-        SELECT ns.scan_id, ns.scan_started, ns.scan_completed, ns.networks_scanned, ns.devices_found, ns.status 
-        FROM network_scan ns 
-        WHERE ns.user_id = ? 
+        SELECT ns.scan_id, ns.scan_started, ns.scan_completed, ns.networks_scanned, ns.devices_found, ns.status
+        FROM network_scan ns
+        WHERE ns.user_id = ?
         ORDER BY ns.scan_started ASC
     ";
     $stmt = $pdo->prepare($scan_history_query);
@@ -239,15 +238,12 @@ include __DIR__ . '/includes/header.php';
 <!-- ========================================================================= -->
 <!-- HTML CONTENT - NETWORK DISCOVERY INTERFACE -->
 <!-- ========================================================================= -->
-
 <div class="container-fluid mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h2 class="mb-0"><i class="bi bi-search me-2"></i>Network Discovery</h2>
             <p class="text-muted mb-0 mt-1">Adaptive scanning with historical delta tracking</p>
         </div>
-        
-        <!-- UPDATED: Clean, simple button linking to the dedicated download page -->
         <div class="d-flex gap-2" role="group" aria-label="Discovery and Deployment Actions">
             <button id="runScanBtn" class="btn btn-primary" data-bs-toggle="tooltip" data-bs-title="Start a new network discovery scan">
                 <i class="bi bi-radar me-1"></i> Run New Scan
@@ -273,33 +269,43 @@ include __DIR__ . '/includes/header.php';
         </div>
         <div class="card-body">
             <div class="table-responsive">
+                <!--
+                    FIX (tn/18): The tbody is now rendered WITHOUT a manual colspan empty-state row.
+                    DataTables counts physical <td> cells; a colspan="6" row registers as 1 cell and
+                    crashes initialization with a '_DT_CellIndex' TypeError. The empty state is now
+                    handled declaratively via DataTables' language.emptyTable option in JavaScript.
+                -->
                 <table class="table table-sm table-hover" id="scanHistoryTable" style="width:100%">
                     <thead class="table-dark">
-                        <tr><th>Scan #</th><th>Started</th><th>Completed</th><th>Networks</th><th>Devices Found</th><th>Status</th></tr>
+                        <tr>
+                            <th>Scan #</th>
+                            <th>Started</th>
+                            <th>Completed</th>
+                            <th>Networks</th>
+                            <th>Devices Found</th>
+                            <th>Status</th>
+                        </tr>
                     </thead>
                     <tbody>
-                        <?php if (empty($scan_history)): ?>
-                        <tr><td colspan="6" class="text-center text-muted py-3">No scan history found.</td></tr>
-                        <?php else: ?>
-                            <?php 
-                            $user_scan_counter = 1;
-                            foreach ($scan_history as $scan): 
-                            ?>
-                            <tr style="cursor: pointer;" data-scan-id="<?= (int)$scan['scan_id'] ?>" title="Click to view results for Scan #<?= $user_scan_counter ?>">
-                                <td>#<?= $user_scan_counter ?></td>
-                                <td><?= date('d M Y, H:i', strtotime($scan['scan_started'])) ?></td>
-                                <td><?= $scan['scan_completed'] ? date('H:i', strtotime($scan['scan_completed'])) : '<span class="text-muted">In Progress</span>' ?></td>
-                                <td><?= (int)$scan['networks_scanned'] ?></td>
-                                <td><?= (int)$scan['devices_found'] ?></td>
-                                <td>
-                                    <?php $badge_class = ['running' => 'bg-primary', 'completed' => 'bg-success', 'failed' => 'bg-danger'][$scan['status']] ?? 'bg-secondary'; ?>
-                                    <span class="badge <?= $badge_class ?>"><?= ucfirst($scan['status']) ?></span>
-                                </td>
-                            </tr>
-                            <?php 
-                            $user_scan_counter++;
-                            endforeach; ?>
-                        <?php endif; ?>
+                        <?php
+                        $user_scan_counter = 1;
+                        foreach ($scan_history as $scan):
+                        ?>
+                        <tr style="cursor: pointer;" data-scan-id="<?= (int)$scan['scan_id'] ?>" title="Click to view results for Scan #<?= $user_scan_counter ?>">
+                            <td>#<?= $user_scan_counter ?></td>
+                            <td><?= date('d M Y, H:i', strtotime($scan['scan_started'])) ?></td>
+                            <td><?= $scan['scan_completed'] ? date('H:i', strtotime($scan['scan_completed'])) : '<span class="text-muted">In Progress</span>' ?></td>
+                            <td><?= (int)$scan['networks_scanned'] ?></td>
+                            <td><?= (int)$scan['devices_found'] ?></td>
+                            <td>
+                                <?php $badge_class = ['running' => 'bg-primary', 'completed' => 'bg-success', 'failed' => 'bg-danger'][$scan['status']] ?? 'bg-secondary'; ?>
+                                <span class="badge <?= $badge_class ?>"><?= ucfirst($scan['status']) ?></span>
+                            </td>
+                        </tr>
+                        <?php
+                        $user_scan_counter++;
+                        endforeach;
+                        ?>
                     </tbody>
                 </table>
             </div>
@@ -331,7 +337,15 @@ include __DIR__ . '/includes/header.php';
                 <div class="table-responsive">
                     <table id="discoveryTable" class="table table-hover table-striped" style="width:100%">
                         <thead class="table-dark">
-                            <tr><th>IP Address</th><th>MAC Address</th><th>Hostname</th><th>Device Type</th><th>Network Name</th><th>VLAN</th><th class="text-end">Actions</th></tr>
+                            <tr>
+                                <th>IP Address</th>
+                                <th>MAC Address</th>
+                                <th>Hostname</th>
+                                <th>Device Type</th>
+                                <th>Network Name</th>
+                                <th>VLAN</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
                         </thead>
                         <tbody></tbody>
                     </table>
@@ -358,20 +372,17 @@ $(document).ready(function() {
         });
     });
 
-    // Initialize History Table (Ascending order to match PHP counter)
-    if ($('#scanHistoryTable').length > 0) {
-        historyTable = $('#scanHistoryTable').DataTable({ 
-            order: [[0, 'asc']],  
-            pageLength: 10, 
-            language: { search: "Filter scan history:" }, 
-            destroy: true 
-        });
-    }
+    // =========================================================================
+    // EVENT BINDINGS FIRST
+    // CRITICAL FIX: Handlers are bound BEFORE DataTables initialization.
+    // Previously, a DataTables crash aborted the document.ready callback before
+    // these lines executed, silently disabling the 'Run New Scan' button.
+    // We use delegation on the table element so handlers survive DataTables
+    // re-rendering (sorting/paging).
+    // =========================================================================
 
-    // =========================================================================
     // EVENT: Load Historical Scan Results (Delta Tracking UI)
-    // =========================================================================
-    $('#scanHistoryTable tbody').on('click', 'tr', function() {
+    $('#scanHistoryTable').on('click', 'tbody tr', function() {
         let scanId = $(this).data('scan-id');
         if (!scanId) return;
 
@@ -391,11 +402,10 @@ $(document).ready(function() {
             dataType: 'json',
             success: function(response) {
                 $('#scanStatus').addClass('d-none');
-                
                 if (response.success && response.results && response.results.length > 0) {
                     $('#resultsContainer').removeClass('d-none');
-                    
                     if (discoveryTable) discoveryTable.clear().destroy();
+
                     const tbody = $('#discoveryTable tbody');
                     tbody.empty();
 
@@ -407,7 +417,6 @@ $(document).ready(function() {
                         // SMART ANCHORING LOGIC: Detect OS and link directly to the correct section
                         let deviceType = (device.device_type || '').toLowerCase();
                         let anchor = '';
-
                         if (deviceType.includes('windows')) {
                             anchor = '#windows';
                         } else if (deviceType.includes('linux') || deviceType.includes('pi') || deviceType.includes('debian')) {
@@ -419,8 +428,8 @@ $(document).ready(function() {
                         }
 
                         let deployBtn = `<a href="download.php${anchor}" class="btn btn-sm btn-outline-primary" data-bs-toggle="tooltip" data-bs-title="View deployment options for ${device.device_type || 'this device'}">
-                                            <i class="bi bi-download me-1"></i> Deploy
-                                         </a>`;
+                            <i class="bi bi-download me-1"></i> Deploy
+                        </a>`;
 
                         tbody.append(`<tr class="${rowClass}">
                             <td><strong>${device.ip_address}</strong>${newBadge}</td>
@@ -433,12 +442,12 @@ $(document).ready(function() {
                         </tr>`);
                     });
 
-                    discoveryTable = $('#discoveryTable').DataTable({ 
-                        order: [[0, 'asc']], 
+                    discoveryTable = $('#discoveryTable').DataTable({
+                        order: [[0, 'asc']],
                         pageLength: 25,
-                        destroy: true 
+                        destroy: true
                     });
-                    
+
                     // CRITICAL: Re-initialize Bootstrap Tooltips for dynamically created content
                     var newTooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
                     newTooltipTriggerList.map(function (tooltipTriggerEl) {
@@ -447,8 +456,6 @@ $(document).ready(function() {
                             placement: 'auto'
                         });
                     });
-                    
-                    console.log('✅ Re-initialized Bootstrap tooltips for dynamic content');
                 } else if (response.success) {
                     $('#noResultsState').removeClass('d-none');
                 } else {
@@ -463,9 +470,7 @@ $(document).ready(function() {
         });
     });
 
-    // =========================================================================
     // EVENT: Run New Scan
-    // =========================================================================
     $('#runScanBtn').on('click', function() {
         const $btn = $(this);
         const $status = $('#scanStatus');
@@ -478,10 +483,10 @@ $(document).ready(function() {
         $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Scanning...');
 
         $.ajax({
-            url: 'discover.php', 
-            type: 'POST', 
-            data: { trigger_scan: true }, 
-            dataType: 'json', 
+            url: 'discover.php',
+            type: 'POST',
+            data: { trigger_scan: true },
+            dataType: 'json',
             timeout: 60000,
             success: function(response) {
                 if (response.success) {
@@ -491,15 +496,37 @@ $(document).ready(function() {
                     $error.removeClass('d-none').html('Error: ' + response.error);
                 }
             },
-            error: function(xhr, status, error) { 
-                $status.addClass('d-none'); 
-                $error.removeClass('d-none').text('AJAX Request Failed: ' + error); 
+            error: function(xhr, status, error) {
+                $status.addClass('d-none');
+                $error.removeClass('d-none').text('AJAX Request Failed: ' + error);
             },
-            complete: function() { 
-                $btn.prop('disabled', false).html('<i class="bi bi-radar me-1"></i> Run New Scan'); 
+            complete: function() {
+                $btn.prop('disabled', false).html('<i class="bi bi-radar me-1"></i> Run New Scan');
             }
         });
     });
+
+    // =========================================================================
+    // INITIALIZE DATA TABLES (GUARDED)
+    // Wrapped in try/catch so any residual table error can NEVER break the
+    // button bindings above. The empty state is handled via language.emptyTable
+    // instead of a manual colspan row (root cause of the tn/18 crash).
+    // =========================================================================
+    if ($.fn && $.fn.DataTable) {
+        try {
+            historyTable = $('#scanHistoryTable').DataTable({
+                order: [[0, 'asc']],
+                pageLength: 10,
+                language: {
+                    search: "Filter scan history:",
+                    emptyTable: "No scan history found."
+                },
+                destroy: true
+            });
+        } catch (e) {
+            console.error('DataTables initialization failed:', e);
+        }
+    }
 });
 </script>
 

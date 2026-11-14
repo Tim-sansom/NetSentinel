@@ -6,23 +6,23 @@
  * PURPOSE:
  * Provides a centralized, filtered view of all monitored endpoint devices,
  * displaying their health status, OS metadata, and last seen telemetry.
+ * Includes full CRUD capabilities (specifically Deletion) for administrative control.
  *
- * ACADEMIC SIGNIFICANCE (Zero-Touch Provisioning):
- * This module demonstrates Multi-Tenant Isolation (SR2) while supporting 
- * Zero-Touch Provisioning (ZTP). Newly deployed agents auto-register without 
- * an assigned group. The query logic below ensures these "Unassigned" devices 
- * are visible to administrators so they can be onboarded, preventing them 
- * from being silently hidden by strict Row-Level Security.
+ * ACADEMIC SIGNIFICANCE (Multi-Tenant Isolation & Data Integrity):
+ * This module is a primary demonstration of Multi-Tenant Isolation (SR2).
+ * It enforces strict Row-Level Security (RLS) to ensure standard users and tenant 
+ * admins only view devices explicitly assigned to their `device_group_id`. 
+ * This prevents the cross-tenant data leakage identified during final evaluation testing.
  *
  * SECURITY BOUNDARIES:
- * - SR2 (Access Control): Strict Row-Level Security (RLS) enforced on all SELECT queries.
+ * - SR2 (Access Control): Strict RLS enforced on SELECT and DELETE queries.
  * - SR3 (Output Sanitisation): All dynamic data is escaped via htmlspecialchars() to prevent XSS.
+ * - SR4 (Data Integrity): Deletion cascades to child tables (check_run) to maintain relational integrity.
  *
  * @author Tim Sansom
- * @version 1.1 (Updated for Zero-Touch Auto-Registration support)
+ * @version 1.2 (Updated for Strict RLS, Delete CRUD, and Academic Notation)
  * @date 2026
  */
-
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/auth.php';
 
@@ -37,6 +37,41 @@ $current_role = strtolower($_SESSION['role'] ?? '');
 $is_super_admin = ($current_role === 'super_admin');
 $is_admin = ($current_role === 'admin' || $is_super_admin);
 $user_group_id = $_SESSION['group_id'] ?? null;
+$current_user_id = $_SESSION['user_id'] ?? null;
+
+// ===========================================================================
+// HANDLE DEVICE DELETION (CRUD - Delete)
+// ===========================================================================
+if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
+    $delete_id = (int)$_GET['delete'];
+    
+    // SR2: Verify ownership before allowing deletion
+    $checkStmt = $pdo->prepare("SELECT device_group_id, hostname FROM device WHERE device_id = ?");
+    $checkStmt->execute([$delete_id]);
+    $targetDevice = $checkStmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($targetDevice) {
+        // Permission Check: Super Admin OR device belongs to user's group
+        if ($is_super_admin || ($user_group_id && $targetDevice['device_group_id'] == $user_group_id)) {
+            // SR4: Data Integrity - Delete child records first to satisfy Foreign Key constraints
+            $pdo->prepare("DELETE FROM check_run WHERE device_id = ?")->execute([$delete_id]);
+            
+            // Delete the device record
+            $pdo->prepare("DELETE FROM device WHERE device_id = ?")->execute([$delete_id]);
+            
+            // Optional: Log the action to audit_log if the helper function exists
+            if (function_exists('log_audit')) {
+                log_audit($pdo, $current_user_id, 'DEVICE_DELETED', 'device', "Deleted device ID: $delete_id ({$targetDevice['hostname']})", $_SERVER['REMOTE_ADDR'] ?? 'unknown');
+            }
+            
+            header("Location: devices.php?deleted=1");
+            exit;
+        } else {
+            header("Location: devices.php?error=permission");
+            exit;
+        }
+    }
+}
 
 // ===========================================================================
 // DATA RETRIEVAL WITH STRICT ROW-LEVEL SECURITY (SR2)
@@ -47,22 +82,16 @@ if ($is_super_admin) {
     $stmt = $pdo->query($devices_query);
 } else {
     if ($user_group_id) {
-        // Standard Admins/Viewers: Filter by their assigned tenant group ID.
-        // ZTP FIX: Added "OR device_group_id IS NULL" to ensure newly auto-registered 
-        // devices (which lack a group assignment) are visible for onboarding.
-        $stmt = $pdo->prepare("
-            SELECT * FROM device 
-            WHERE device_group_id = ? OR device_group_id IS NULL 
-            ORDER BY last_seen_at DESC
-        ");
+        // SR2 FIX: Strict Multi-Tenant Isolation. 
+        // Standard admins ONLY see devices explicitly assigned to their group.
+        // We REMOVED the "OR device_group_id IS NULL" clause to prevent cross-tenant leakage.
+        $stmt = $pdo->prepare("SELECT * FROM device WHERE device_group_id = ? ORDER BY last_seen_at DESC");
         $stmt->execute([$user_group_id]);
     } else {
         // Defensive programming: Return an empty result set for users without an assigned group.
-        // This prevents SQL errors or accidental data leakage (e.g., returning all rows).
         $stmt = $pdo->query("SELECT * FROM device WHERE 1=0");
     }
 }
-
 $devices = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $page_title = "Endpoint Devices";
@@ -70,6 +99,14 @@ require_once __DIR__ . '/includes/header.php';
 ?>
 
 <div class="container-fluid mt-4">
+    <!-- Success/Error Alerts -->
+    <?php if (isset($_GET['deleted'])): ?>
+        <div class="alert alert-success alert-dismissible fade show" role="alert">Device deleted successfully.<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+    <?php endif; ?>
+    <?php if (isset($_GET['error'])): ?>
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">Access Denied. You do not have permission to perform this action.<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+    <?php endif; ?>
+
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
             <h2 class="mb-0"><i class="bi bi-hdd-network me-2"></i>Endpoint Devices</h2>
@@ -136,18 +173,21 @@ require_once __DIR__ . '/includes/header.php';
                                 <!-- SR3: Escape all dynamic output to prevent Cross-Site Scripting (XSS) -->
                                 <td class="fw-bold">
                                     <?= htmlspecialchars($device['hostname'] ?: 'Unknown') ?>
-                                    <?php if (empty($device['device_group_id'])): ?>
-                                        <span class="badge bg-info text-dark ms-1" data-bs-toggle="tooltip" title="Unassigned: Awaiting group allocation">Unassigned</span>
-                                    <?php endif; ?>
                                 </td>
                                 <td><span class="badge <?= $os_class ?>"><?= htmlspecialchars($device['os_family'] ?: 'Unknown') ?></span></td>
                                 <td><code><?= htmlspecialchars($device['os_version'] ?: 'Unknown') ?></code></td>
                                 <td><?= date('d M Y, H:i', strtotime($device['last_seen_at'])) ?></td>
                                 <td><?= $status_badge ?></td>
                                 <td>
-                                    <a href="device_detail.php?id=<?= (int)$device['device_id'] ?>" class="btn btn-sm btn-outline-primary">
+                                    <a href="device_detail.php?id=<?= (int)$device['device_id'] ?>" class="btn btn-sm btn-outline-primary me-1">
                                         <i class="bi bi-eye me-1"></i>Details
                                     </a>
+                                    <?php if ($is_admin): ?>
+                                        <!-- SR2: Delete button restricted to Admin/Super Admin roles -->
+                                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="confirmDelete(<?= (int)$device['device_id'] ?>, '<?= htmlspecialchars($device['hostname']) ?>')">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                             <?php endforeach; ?>
@@ -159,28 +199,47 @@ require_once __DIR__ . '/includes/header.php';
     </div>
 </div>
 
-<!-- DataTables Assets (Loaded locally or via CDN as per project config) -->
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title" id="deleteModalLabel">Confirm Device Deletion</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        Are you sure you want to permanently delete the device <strong id="deviceNameToDelete"></strong>?
+        <br><br>
+        <small class="text-muted">This will remove all associated check runs and findings from the database.</small>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <a href="#" id="confirmDeleteBtn" class="btn btn-danger">Delete Device</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DataTables Assets -->
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
 <script>
 $(document).ready(function() {
-    // Initialize Bootstrap Tooltips for the Unassigned badge
-    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl)
-    })
-
     // Initialize DataTables with client-side processing
-    // Suitable for MVP scale; can be upgraded to server-side processing (NFR1) if dataset exceeds ~1000 rows
+    // NFR1: Suitable for MVP scale; can be upgraded to server-side processing if dataset exceeds ~1000 rows
     $('#devicesTable').DataTable({
         pageLength: 10,
         order: [[3, 'desc']], // Default sort by 'Last Seen' descending
-        language: {
-            search: "Filter devices:"
-        }
+        language: { search: "Filter devices:" }
     });
 });
-</script>
 
+// JavaScript handler for the Delete Modal
+function confirmDelete(deviceId, deviceName) {
+    document.getElementById('deviceNameToDelete').textContent = deviceName;
+    document.getElementById('confirmDeleteBtn').href = 'devices.php?delete=' + deviceId;
+    new bootstrap.Modal(document.getElementById('deleteModal')).show();
+}
+</script>
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

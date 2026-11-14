@@ -1,90 +1,50 @@
 services:
-  dashboard:
-    build: .
-    platform: linux/amd64
-    container_name: netsentinel-dashboard
-    ports:
-     - "8088:80"
-     - "8443:443"  # HTTPS for external agents
-    volumes:
-      - ./public:/var/www/html:delegated
-      - ./scripts:/var/www/scripts:ro  # Scripts
-      - ./cronjobs:/var/www/cronjobs   # Cron jobs
-      - ./certs:/etc/apache2/certs:ro  # SSL certificates
-      - ./apache-config/netsentinel-ssl.conf:/etc/apache2/sites-enabled/netsentinel-ssl.conf:ro # SSL vhost config
-    environment:
-      NETSENTINEL_ENV: development
-      DB_HOST: mysql
-      DB_NAME: netsentinel
-      DB_USER: netsentinel_user
-      DB_PASS: ${MYSQL_PASSWORD}
-    depends_on:
-      - mysql
-    restart: unless-stopped
-    networks:
-      - netsentinel-network
-
-  collector:
-    image: python:3.10-slim
-    platform: linux/amd64
-    container_name: netsentinel-collector
-    working_dir: /app
-    volumes:
-      - ./collector:/app
-    command: >
-      sh -c "pip install --no-cache-dir -r requirements.txt && python collector.py"
-    environment:
-      PYTHONUNBUFFERED: "1"
-      NETSENTINEL_ENV: development
-      API_URL: http://dashboard:80/api/submit.php  # Keep HTTP for internal Docker network
-      DEVICE_ID: agent-001
-      DB_HOST: mysql
-      DB_NAME: netsentinel
-      DB_USER: netsentinel_user
-      DB_PASS: ${MYSQL_PASSWORD}
-    depends_on:
-      - mysql
-    restart: unless-stopped
-    networks:
-      - netsentinel-network
-
-  mysql:
+  # 1. The Database (MySQL 8)
+  db:
     image: mysql:8.0
-    platform: linux/amd64
-    container_name: netsentinel-mysql
-    ports:
-      - "3306:3306"
+    container_name: netsentinel-db
+    restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: netsentinel
-      MYSQL_USER: netsentinel_user
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASS}
     volumes:
-      - mysql_data:/var/lib/mysql
-      - ./db-init:/docker-entrypoint-initdb.d
-    restart: unless-stopped
-    networks:
-      - netsentinel-network
+      - db_data:/var/lib/mysql
+      - ./db-init:/docker-entrypoint-initdb.d:ro # Auto-imports schema on first run
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  phpmyadmin:
-    image: phpmyadmin/phpmyadmin
-    platform: linux/amd64
-    container_name: netsentinel-phpmyadmin
+  # 2. The Web Server (Apache + PHP + Cron)
+  web:
+    build: .
+    container_name: netsentinel-web
+    restart: unless-stopped
     ports:
-      - "8082:80"
-    environment:
-      PMA_HOST: mysql
-      PMA_USER: root
-      PMA_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      - "9095:80" # Access dashboard at http://localhost:8080
+    volumes:
+      - ./public:/var/www/html/public:delegated
+      - ./cronjobs:/var/www/html/cronjobs:ro
+    env_file:
+      - .env
     depends_on:
-      - mysql
-    restart: unless-stopped
-    networks:
-      - netsentinel-network
+      db:
+        condition: service_healthy
 
-networks:
-  netsentinel-network:
-    driver: bridge
+  # 3. The Background Worker (Alternative to host cron, keeps it self-contained)
+  worker:
+    build: .
+    container_name: netsentinel-worker
+    restart: unless-stopped
+    command: sh -c 'while true; do php /var/www/html/cronjobs/update_threat_feed.php >> /var/log/threat_feed.log 2>&1; sleep 21600; done'
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
-  mysql_data:
+  db_data:

@@ -23,7 +23,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/../public/includes/db.php';
 
 // If already logged in, redirect to dashboard
 if (isset($_SESSION['user_id'])) {

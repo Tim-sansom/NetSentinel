@@ -1,33 +1,29 @@
 """
 Port Check - Comprehensive Service Detection
-
 Scans localhost for ~100 common and high-risk open ports.
 Fulfils FR2 (Port/Service checks) and NFR1 (Lightweight).
-
-Strikes a balance between thoroughness (proving SIEM capability) 
-and performance (avoiding a full 65,535 port scan which would 
+Strikes a balance between thoroughness (proving SIEM capability)
+and performance (avoiding a full 65,535 port scan which would
 violate the lightweight SME constraint).
-"""
 
+UPDATED (D-097): Flattened the 'details' return payload to a simple list 
+of dictionaries. This ensures the PHP API (submit.php) can easily iterate 
+and insert rows into the port_finding table without parsing nested structures.
+"""
 import socket
 import logging
 from typing import Dict, Tuple, List
 from .base_check import BaseCheck, CheckResult
 
-
 class PortCheck(BaseCheck):
     """
     Checks for common high-risk and standard open ports on the local endpoint.
-    
     Uses a predefined database of ~100 common ports categorized by risk level.
     Uses TCP socket connections with a strict 0.1s timeout to ensure the scan 
     completes in under 10 seconds, satisfying NFR1.
     """
-
     # Comprehensive database of common ports and their risk profiles.
     # Format: port_number: (service_name, risk_level)
-    # Risk levels: 'critical' (never open), 'high' (usually bad on workstations), 
-    #              'medium' (context-dependent), 'low' (standard/safe)
     PORT_DATABASE: Dict[int, Tuple[str, str]] = {
         # --- Critical Risk (Should NEVER be open on an endpoint) ---
         21: ("FTP", "critical"),
@@ -41,7 +37,6 @@ class PortCheck(BaseCheck):
         6379: ("Redis", "critical"),
         27017: ("MongoDB", "critical"),
         11211: ("Memcached", "critical"),
-        
         # --- High Risk (Often targeted for lateral movement/ransomware) ---
         22: ("SSH", "high"),
         3389: ("RDP", "high"),
@@ -50,7 +45,6 @@ class PortCheck(BaseCheck):
         8080: ("HTTP-Proxy", "high"),
         8443: ("HTTPS-Alt", "high"),
         9090: ("Web-Console", "high"),
-        
         # --- Medium Risk (Standard services, but worth monitoring) ---
         25: ("SMTP", "medium"),
         53: ("DNS", "medium"),
@@ -65,7 +59,6 @@ class PortCheck(BaseCheck):
         5001: ("Dev-Server", "medium"),
         8000: ("Alt-HTTP", "medium"),
         8888: ("Alt-HTTP", "medium"),
-        
         # --- Low Risk (Standard web/infrastructure) ---
         80: ("HTTP", "low"),
         443: ("HTTPS", "low"),
@@ -82,40 +75,32 @@ class PortCheck(BaseCheck):
             description="Scans localhost for ~100 common and high-risk open ports."
         )
         self.logger = logging.getLogger("netsentinel.checks.port_check")
-        
         # Strict 0.1s timeout. 
-        # Why: Scanning 100 ports with a 1s timeout could take 100s. 
-        # 0.1s ensures the scan finishes in <10s, keeping the agent lightweight (NFR1).
         self.scan_timeout = 0.1
 
     def check(self) -> CheckResult:
         """
         Perform the port check against the PORT_DATABASE.
-        
         Returns:
-            CheckResult with a categorized list of open ports in the 'details' dictionary.
-            Status is 'fail' if any critical/high-risk ports are found.
+            CheckResult with a FLATTED list of open ports in the 'details' key.
+            This ensures the PHP API can easily iterate and insert into port_finding.
         """
         open_ports: List[Dict[str, str]] = []
-        
         try:
-            # Iterate through our curated list of ~100 ports
             for port, (service_name, risk_level) in self.PORT_DATABASE.items():
                 if self._is_port_open(port):
+                    # FLATTENED STRUCTURE: Easy for API to parse
                     open_ports.append({
                         "port": port,
                         "service": service_name,
-                        "risk": risk_level
+                        "severity": risk_level  # Renamed from 'risk' to 'severity' to match DB schema
                     })
-                    # Log high/critical findings immediately for visibility
                     if risk_level in ['critical', 'high']:
                         self.logger.warning(f"High-risk port open: {service_name} ({port})")
-                        
-            # Separate findings by risk level for the dashboard
-            critical_ports = [p for p in open_ports if p['risk'] == 'critical']
-            high_ports = [p for p in open_ports if p['risk'] == 'high']
-            
-            # Determine overall status based on the highest severity finding
+
+            critical_ports = [p for p in open_ports if p['severity'] == 'critical']
+            high_ports = [p for p in open_ports if p['severity'] == 'high']
+
             if critical_ports:
                 status = "fail"
                 severity = "critical"
@@ -132,18 +117,14 @@ class PortCheck(BaseCheck):
                 status = "pass"
                 severity = "low"
                 message = "No high-risk ports detected in the top 100 scan."
-                
+
             return CheckResult(
                 check_name=self.name,
                 status=status,
                 message=message,
                 severity=severity,
-                details={
-                    "total_open": len(open_ports),
-                    "critical_ports": critical_ports,
-                    "high_ports": high_ports,
-                    "all_open_ports": open_ports
-                }
+                # FIX: Return the flat list directly. The API will loop through this.
+                details=open_ports 
             )
         except Exception as e:
             self.logger.error(f"Failed to perform port check: {str(e)}")
@@ -158,21 +139,10 @@ class PortCheck(BaseCheck):
     def _is_port_open(self, port: int) -> bool:
         """
         Check if a specific TCP port is open on localhost.
-        
-        Uses connect_ex() with a strict 0.1s timeout. 
-        connect_ex() returns an error indicator (0 for success) rather than raising 
-        an exception, making it much faster and cleaner for scanning loops.
-        
-        Args:
-            port: The TCP port number to check.
-            
-        Returns:
-            True if the port is open and accepting connections.
         """
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(self.scan_timeout)
             try:
-                # Attempt to connect to localhost (127.0.0.1)
                 result = s.connect_ex(('127.0.0.1', port))
                 return result == 0
             except socket.error:

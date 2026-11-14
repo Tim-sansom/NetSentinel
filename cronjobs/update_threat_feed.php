@@ -13,7 +13,7 @@ if (php_sapi_name() !== 'cli') {
 }
 
 // 2. Bootstrap Database Connection
-require_once __DIR__ . '/../html/includes/db.php';
+require_once __DIR__ . '/../public/includes/db.php';
 
 // 3. Configuration
 $feed_url = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json";
